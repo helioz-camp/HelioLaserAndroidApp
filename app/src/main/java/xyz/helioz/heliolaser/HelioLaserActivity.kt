@@ -1,6 +1,8 @@
 package xyz.helioz.heliolaser
 
+import android.content.Context
 import android.graphics.Color
+import android.hardware.camera2.CameraManager
 import android.os.Bundle
 import android.os.Handler
 import android.support.v7.app.AppCompatActivity
@@ -11,74 +13,21 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.TextView
 import org.jetbrains.anko.*
+import java.util.*
+import kotlin.math.absoluteValue
 
 class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
-    val alphabet = arrayOf(
-            ".-",   //A
-            "-...", //B
-            "-.-.", //C
-            "-..",  //D
-            ".",    //E
-            "..-.", //F
-            "--.",  //G
-            "....", //H
-            "..",   //I
-            ".---", //J
-            "-.-",  //K
-            ".-..", //L
-            "--",   //M
-            "-.",   //N
-            "---",  //O
-            ".--.", //P
-            "--.-", //Q
-            ".-.",  //R
-            "...",  //S
-            "-",    //T
-            "..-",  //U
-            "...-", //V
-            ".--",  //W
-            "-..-", //X
-            "-.--", //Y
-            "--.." //Z
-    )
-    val digits = arrayOf(
-            "-----", //0
-            ".----", //1
-            "..---", //2
-            "...--", //3
-            "....-", //4
-            ".....", //5
-            "-....", //6
-            "--...", //7
-            "---..", //8
-            "----." //9
-    )
-
-    private fun convertTextToMorse(text:String):String {
-        with(StringBuilder()) {
-            for (letter in text) {
-                val code = letter.toLowerCase().toInt()
-                if ('0'.toInt() <= code && '9'.toInt() >= code) {
-                    append(digits[code - '0'.toInt()])
-                } else if ('a'.toInt() <= code && 'z'.toInt() >= code) {
-                    append(alphabet[code - 'a'.toInt()])
-                } else if (!letter.isWhitespace()) {
-                    warn("convertTextToMorse does not know $code $letter")
-                }
-                append(" ")
-            }
-            return toString()
-        }
-    }
 
     var sendingMessage = ""
     var activelySendingNow = false
     private lateinit var mainHandler:Handler
     private lateinit var letterSendingBox:TextView
     private lateinit var messageSendingBox: TextView
+    val morseTimings: HelioMorseCodec.HelioMorseTimings = HelioMorseCodec.HelioMorseTimings()
+    val audioTonePlayer = HelioAudioTonePlayer()
 
     private fun animateBackgroundMorseCode(message:String, view: View) {
-        sendingMessage = convertTextToMorse(message)
+        sendingMessage = HelioMorseCodec.convertTextToMorse(message)
         maybeSendOneLetter(view)
     }
 
@@ -87,31 +36,41 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
             return
         }
         view.backgroundColor = Color.WHITE
+        audioTonePlayer.stopPlayingTone()
         messageSendingBox.text = sendingMessage
+
         if (sendingMessage.isEmpty()) {
             letterSendingBox.text = ""
             return
         }
+
         val firstLetter = sendingMessage.first()
         letterSendingBox.text = firstLetter.toString()
         sendingMessage = sendingMessage.removeRange(0, 1)
+        messageSendingBox.text = sendingMessage
         activelySendingNow = true
-        mainHandler.postDelayed({
-            var delay = 180L
-            messageSendingBox.text = sendingMessage
-            when (firstLetter) {
-                ' ' -> {}
-                '-' -> { view.backgroundColor = Color.BLACK }
-                '.' -> { view.backgroundColor = Color.BLACK
-                    delay = 60L
-                }
-            }
-            mainHandler.postDelayed({
+
+        val signedTimings = LinkedList(HelioMorseCodec.convertMorseToSignedDurations(firstLetter.toString(), morseTimings).toList())
+
+        fun popTiming() {
+            if (signedTimings.isEmpty()) {
                 activelySendingNow = false
                 maybeSendOneLetter(view)
-            }, delay)
+            } else {
+                val signedTiming = signedTimings.removeFirst()
+                view.backgroundColor = if (signedTiming > 0) Color.BLACK else Color.WHITE
 
-        }, 100)
+                if (signedTiming > 0) {
+                    audioTonePlayer.startPlayingTone(signedTiming)
+                }
+
+                mainHandler.postDelayed({
+                    popTiming()
+                }, Math.ceil(1000.0 * signedTiming.absoluteValue).toLong())
+            }
+        }
+
+        popTiming()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -127,15 +86,19 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
             val editorWidget = editText {
                 hint = "Message to Heliobeam in morse code!"
                 inputType = InputType.TYPE_CLASS_TEXT
-                setImeActionLabel("Beam", KeyEvent.KEYCODE_ENTER)
-                onEditorAction { _, actionId, keyEvent ->
-                    if (actionId == EditorInfo.IME_NULL
-                            && keyEvent?.action == KeyEvent.ACTION_DOWN) {
+                setImeActionLabel("Send", EditorInfo.IME_ACTION_SEND)
+                imeOptions = EditorInfo.IME_ACTION_SEND
+
+                onEditorAction { _, actionId, _ ->
+                    if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_SEND) {
                         beam(text.toString())
+                        true
+                    } else {
+                        false
                     }
-                    true
                 }
             }
+
             button("Beam") {
                 onClick {
                     beam(editorWidget.text.toString())
@@ -147,6 +110,7 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
                 textSize = 140f
                 gravity = Gravity.CENTER_HORIZONTAL
             }
+
             messageSendingBox = textView {
                 textSize = 64f
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -154,6 +118,11 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
         }
 
         setContentView(fullLayout)
+
+        val audioRecorder = HelioAudioRecorder()
+        doAsync {
+            audioRecorder.startRecording()
+        }
     }
 
     override fun onDestroy() {

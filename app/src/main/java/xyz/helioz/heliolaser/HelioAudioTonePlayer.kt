@@ -11,6 +11,7 @@ class HelioAudioTonePlayer(toneHertz:Double=780.0) : AutoCloseable {
             audioTrack.release()
         }
     }
+    var samplesInTone:Int = 0
 
     val audioTrack by lazy {
         val audioStreamType = AudioManager.STREAM_DTMF
@@ -18,15 +19,10 @@ class HelioAudioTonePlayer(toneHertz:Double=780.0) : AutoCloseable {
         val channelConfig = AudioFormat.CHANNEL_OUT_MONO
         val audioFormat = AudioFormat.ENCODING_PCM_16BIT
         // cannot use floats as they were added in API 21
-        val buffer = ShortArray(((nativeOutputSampleRate*2)/toneHertz).toInt())
+        val buffer = ShortArray((nativeOutputSampleRate/toneHertz).toInt())
         for (i in buffer.indices) {
             val time = i/nativeOutputSampleRate.toDouble()
-            buffer[i] = Math.max(
-                    Math.min(
-                            Short.MAX_VALUE.toFloat(),
-                            0x10000 * Math.sin(time * toneHertz * 2.0 * Math.PI).toFloat()),
-                    Short.MIN_VALUE.toFloat())
-                    .toShort()
+            buffer[i] = (Short.MAX_VALUE.toFloat() * Math.sin(time * toneHertz * 2.0 * Math.PI).toFloat()).toShort()
         }
 
         val track = AudioTrack(
@@ -39,22 +35,27 @@ class HelioAudioTonePlayer(toneHertz:Double=780.0) : AutoCloseable {
         )
 
         track.write(buffer, 0, buffer.size)
-        track.setLoopPoints(0, buffer.size, -1)
+        samplesInTone = buffer.size
 
         track
     }
 
-    fun startPlayingTone() {
-        doAsync { audioTrack.play() }
+    fun startPlayingTone(durationSeconds:Double) {
+        doAsync {
+            if (audioTrack.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                audioTrack.pause()
+                audioTrack.reloadStaticData()
+            }
+            audioTrack.setLoopPoints(0, samplesInTone,
+                    Math.floor(durationSeconds/samplesInTone*audioTrack.sampleRate).toInt())
+
+            audioTrack.play()
+        }
     }
 
     fun stopPlayingTone() {
-        // reduce the popping sound on pause by lowering the volume instead, which Android
-        // seems to know to do smoothly
-        audioTrack.setStereoVolume(0f, 0f)
         doAsync {
             audioTrack.pause()
-            audioTrack.setStereoVolume(1f, 1f)
             audioTrack.reloadStaticData()
         }
     }

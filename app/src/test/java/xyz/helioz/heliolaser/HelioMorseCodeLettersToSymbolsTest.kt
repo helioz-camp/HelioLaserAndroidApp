@@ -2,7 +2,7 @@ package xyz.helioz.heliolaser
 import io.kotlintest.shouldBe
 import io.kotlintest.specs.*
 
-class HelioMorseCodeTest : StringSpec({
+class HelioMorseCodeLettersToSymbolsTest : StringSpec({
     fun convertBackAndForth(text:String) {
         val morse = HelioMorseCodec.convertTextToMorse(text)
         val textConverted = HelioMorseCodec.convertMorseToText(morse)
@@ -18,14 +18,16 @@ class HelioMorseCodeTest : StringSpec({
     }
 
     "all characters should convert back and forth" {
-
         for (char in HelioMorseCodec.characterToMorse.keys) {
             convertBackAndForth(char.toString())
         }
     }
 
-    "test should run" {
-        println("hello")
-        throw RuntimeException("test did run; be happy that the other tests were run too")
+    "sos" {
+        HelioMorseCodec.convertTextToMorse("sos") shouldBe "... --- ..."
+    }
+
+    "a" {
+        HelioMorseCodec.convertTextToMorse("a") shouldBe ".-"
     }
 }) {}

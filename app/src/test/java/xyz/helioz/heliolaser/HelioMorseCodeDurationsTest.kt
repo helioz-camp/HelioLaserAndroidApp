@@ -67,6 +67,8 @@ class HelioMorseCodeDurationsTest : StringSpec({
             val signedDurations = HelioMorseCodec.convertMorseToSignedDurations(message, HelioMorseCodec.HelioMorseTimings(ditSeconds = dit))
             val guessedTimings = HelioMorseCodec.guessMorseTimings(signedDurations)
             guessedTimings.ditSeconds shouldBe (dit plusOrMinus dit/100)
+            guessedTimings.symbolSpaceSeconds shouldBe (dit plusOrMinus dit/100)
+            guessedTimings.dahSeconds shouldBe ((dit*3) plusOrMinus dit/30)
             val symbolsReconverted = HelioMorseCodec.convertSignedDurationsToMorse(signedDurations, guessedTimings)
             symbolsReconverted shouldBe message
         }
