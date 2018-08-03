@@ -1,18 +1,25 @@
 package xyz.helioz.heliolaser
 
+import android.app.ActionBar
 import android.content.Context
 import android.graphics.Color
 import android.hardware.camera2.CameraManager
 import android.os.Bundle
 import android.os.Handler
+import android.support.v4.widget.TextViewCompat
+import android.support.v4.widget.TextViewCompat.setAutoSizeTextTypeWithDefaults
 import android.support.v7.app.AppCompatActivity
+import android.support.v7.widget.AppCompatTextView
 import android.text.InputType
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.widget.LinearLayout
 import android.widget.TextView
 import org.jetbrains.anko.*
+import org.jetbrains.anko.appcompat.v7.tintedButton
 import java.util.*
 import kotlin.math.absoluteValue
 
@@ -20,22 +27,23 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
 
     var sendingMessage = ""
     var activelySendingNow = false
-    private lateinit var mainHandler:Handler
-    private lateinit var letterSendingBox:TextView
+    private lateinit var mainHandler: Handler
+    private lateinit var letterSendingBox: TextView
     private lateinit var messageSendingBox: TextView
+    private lateinit var visualSendingBox: View
     val morseTimings: HelioMorseCodec.HelioMorseTimings = HelioMorseCodec.HelioMorseTimings()
     val audioTonePlayer = HelioAudioTonePlayer()
 
-    private fun animateBackgroundMorseCode(message:String, view: View) {
+    private fun animateBackgroundMorseCode(message: String) {
         sendingMessage = HelioMorseCodec.convertTextToMorse(message)
-        maybeSendOneLetter(view)
+        maybeSendOneLetter()
     }
 
-    private fun maybeSendOneLetter(view: View) {
+    private fun maybeSendOneLetter() {
         if (activelySendingNow) {
             return
         }
-        view.backgroundColor = Color.WHITE
+        visualSendingBox.backgroundColor = Color.WHITE
         audioTonePlayer.stopPlayingTone()
         messageSendingBox.text = sendingMessage
 
@@ -55,10 +63,10 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
         fun popTiming() {
             if (signedTimings.isEmpty()) {
                 activelySendingNow = false
-                maybeSendOneLetter(view)
+                maybeSendOneLetter()
             } else {
                 val signedTiming = signedTimings.removeFirst()
-                view.backgroundColor = if (signedTiming > 0) Color.BLACK else Color.WHITE
+                visualSendingBox.backgroundColor = if (signedTiming > 0) Color.BLACK else Color.WHITE
 
                 if (signedTiming > 0) {
                     audioTonePlayer.startPlayingTone(signedTiming)
@@ -77,38 +85,51 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
         super.onCreate(savedInstanceState)
         reportGlobalEvent()
         mainHandler = Handler(getMainLooper())
-        fun beam(message:String?) {
-            animateBackgroundMorseCode("CQ ${message} K", contentView!!)
+        fun beam(message: String?) {
+            animateBackgroundMorseCode("CQ ${message} K")
         }
 
         val fullLayout = verticalLayout {
+            val sendingBox = AppCompatTextView(context)
+            with (sendingBox) {
+                val lp = LinearLayout.LayoutParams(displayMetrics.widthPixels/2, displayMetrics.widthPixels/2)
+                lp.bottomMargin = lp.height/10
+                lp.topMargin = lp.height/10
+                lp.gravity = Gravity.CENTER_HORIZONTAL
+                layoutParams = lp
+                gravity = Gravity.CENTER
+                textColor = Color.WHITE
+
+                setAutoSizeTextTypeUniformWithConfiguration(1, displayMetrics.widthPixels, 1, TypedValue.COMPLEX_UNIT_PX)
+            }
+            letterSendingBox = sendingBox
+            visualSendingBox = sendingBox
+            addView(sendingBox)
 
             val editorWidget = editText {
-                hint = "Message to Heliobeam in morse code!"
+                hint = "Message to translate to morse code"
                 inputType = InputType.TYPE_CLASS_TEXT
                 setImeActionLabel("Send", EditorInfo.IME_ACTION_SEND)
                 imeOptions = EditorInfo.IME_ACTION_SEND
 
                 onEditorAction { _, actionId, _ ->
-                    if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_SEND) {
+                    if (actionId == EditorInfo.IME_ACTION_UNSPECIFIED || actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_SEND) {
                         beam(text.toString())
                         true
                     } else {
                         false
                     }
                 }
+
+                gravity = Gravity.CENTER
+                textSize = 40f
             }
 
-            button("Beam") {
+            imageButton(R.drawable.ic_present_to_all_black_120dp) {
                 onClick {
                     beam(editorWidget.text.toString())
                 }
                 backgroundColor = Color.TRANSPARENT
-            }
-
-            letterSendingBox = textView {
-                textSize = 140f
-                gravity = Gravity.CENTER_HORIZONTAL
             }
 
             messageSendingBox = textView {
