@@ -5,13 +5,16 @@ import android.content.Context
 import android.content.res.Configuration
 import android.os.Bundle
 import android.os.Looper
-import org.jetbrains.anko.*
+import com.google.gson.JsonObject
+import org.jetbrains.anko.AnkoLogger
+import org.jetbrains.anko.info
+import org.jetbrains.anko.warn
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 
 class HelioLaserApplication: Application(), AnkoLogger {
-    val startTimeMillis = System.currentTimeMillis()
+    private val startTimeMillis = System.currentTimeMillis()
 
     val applicationAgeSeconds:Double
         get() = 0.001 * (System.currentTimeMillis() - startTimeMillis)
@@ -22,6 +25,7 @@ class HelioLaserApplication: Application(), AnkoLogger {
 
     override fun onCreate() {
         super.onCreate()
+        reportGlobalEvent()
     }
 
     override fun onLowMemory() {
@@ -47,12 +51,15 @@ class HelioLaserApplication: Application(), AnkoLogger {
     companion object {
         var helioLaserApplicationInstance: HelioLaserApplication? = null
             private set
+
     }
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
+        reportGlobalEvent()
     }
 
+    val buildProperties = JsonObject()
 }
 
 @Suppress("NOTHING_TO_INLINE") // inline just to avoid extra stack frame
@@ -72,7 +79,7 @@ inline fun AnkoLogger.reportGlobalEvent() {
 }
 
 
-inline fun AnkoLogger.tryOrContinue(lambda: () -> Unit): Unit {
+inline fun AnkoLogger.tryOrContinue(lambda: () -> Unit) {
     try {
         lambda()
     } catch (e:Exception) {

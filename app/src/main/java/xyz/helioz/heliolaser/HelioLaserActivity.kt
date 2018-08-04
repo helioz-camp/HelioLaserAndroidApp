@@ -1,38 +1,35 @@
 package xyz.helioz.heliolaser
 
-import android.app.ActionBar
-import android.content.Context
 import android.graphics.Color
-import android.hardware.camera2.CameraManager
+import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.os.Handler
-import android.support.v4.widget.TextViewCompat
-import android.support.v4.widget.TextViewCompat.setAutoSizeTextTypeWithDefaults
 import android.support.v7.app.AppCompatActivity
-import android.support.v7.widget.AppCompatTextView
 import android.text.InputType
-import android.util.TypedValue
 import android.view.Gravity
-import android.view.KeyEvent
-import android.view.View
+import android.view.MotionEvent
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
-import android.widget.LinearLayout
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
+import android.widget.RelativeLayout
 import android.widget.TextView
 import org.jetbrains.anko.*
-import org.jetbrains.anko.appcompat.v7.tintedButton
 import java.util.*
 import kotlin.math.absoluteValue
 
 class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
 
-    var sendingMessage = ""
-    var activelySendingNow = false
+    private var sendingMessage = ""
+    private var activelySendingNow = false
     private lateinit var mainHandler: Handler
-    private lateinit var letterSendingBox: TextView
     private lateinit var messageSendingBox: TextView
-    private lateinit var visualSendingBox: View
-    val morseTimings: HelioMorseCodec.HelioMorseTimings = HelioMorseCodec.HelioMorseTimings()
-    val audioTonePlayer = HelioAudioTonePlayer()
+    private lateinit var editorWidget: EditText
+    private val morseTimings: HelioMorseCodec.HelioMorseTimings = HelioMorseCodec.HelioMorseTimings()
+    private val audioTonePlayer = HelioAudioTonePlayer()
+    private var helioGLSurfaceView: GLSurfaceView? = null
+    var helioGLRenderer: HelioGLRenderer? = null
+    var helioCameraGLVisualisation : HelioCameraGLVisualisation = HelioCameraGLVisualisation()
 
     private fun animateBackgroundMorseCode(message: String) {
         sendingMessage = HelioMorseCodec.convertTextToMorse(message)
@@ -43,17 +40,15 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
         if (activelySendingNow) {
             return
         }
-        visualSendingBox.backgroundColor = Color.WHITE
+        helioCameraGLVisualisation.background.fill(1f)
         audioTonePlayer.stopPlayingTone()
         messageSendingBox.text = sendingMessage
 
         if (sendingMessage.isEmpty()) {
-            letterSendingBox.text = ""
             return
         }
 
         val firstLetter = sendingMessage.first()
-        letterSendingBox.text = firstLetter.toString()
         sendingMessage = sendingMessage.removeRange(0, 1)
         messageSendingBox.text = sendingMessage
         activelySendingNow = true
@@ -66,7 +61,7 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
                 maybeSendOneLetter()
             } else {
                 val signedTiming = signedTimings.removeFirst()
-                visualSendingBox.backgroundColor = if (signedTiming > 0) Color.BLACK else Color.WHITE
+                helioCameraGLVisualisation.background.fill(if (signedTiming > 0) 0f else 1f)
 
                 if (signedTiming > 0) {
                     audioTonePlayer.startPlayingTone(signedTiming)
@@ -81,49 +76,96 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
         popTiming()
     }
 
+    private fun makeCameraSurfaceView():GLSurfaceView {
+        return object : GLSurfaceView(this@HelioLaserActivity) {
+            var h = 0
+            var w = 0
+
+            override fun onMeasure(ws: Int, hs: Int) {
+                w = MeasureSpec.getSize(ws)
+                h = MeasureSpec.getSize(hs)
+                // never reduce size even when status bar comes along
+                setMeasuredDimension(w, h)
+            }
+
+            override fun onTouchEvent(event: MotionEvent): Boolean {
+                info{"GLSurfaceView onTouchEvent $event"}
+                helioCameraGLVisualisation.visualiseMotionEvent(event)
+                return true
+            }
+
+            override fun performClick(): Boolean {
+                info{"GLSurfaceView performClick"}
+                return super.performClick()
+            }
+
+            override fun toString(): String {
+                return "${javaClass.simpleName}{w=$w,h=$h,renderer=$helioGLRenderer}"
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         reportGlobalEvent()
-        mainHandler = Handler(getMainLooper())
+        mainHandler = Handler(mainLooper)
         fun beam(message: String?) {
-            animateBackgroundMorseCode("CQ ${message} K")
+            animateBackgroundMorseCode("CQ $message K")
         }
+        val surfaceView = makeCameraSurfaceView()
+        helioGLRenderer = HelioGLRenderer(helioCameraGLVisualisation)
+        helioGLRenderer?.setupSurfaceViewForGL(surfaceView)
+        helioGLSurfaceView = surfaceView
 
         val fullLayout = verticalLayout {
-            val sendingBox = AppCompatTextView(context)
-            with (sendingBox) {
-                val lp = LinearLayout.LayoutParams(displayMetrics.widthPixels/2, displayMetrics.widthPixels/2)
-                lp.bottomMargin = lp.height/10
-                lp.topMargin = lp.height/10
-                lp.gravity = Gravity.CENTER_HORIZONTAL
-                layoutParams = lp
-                gravity = Gravity.CENTER
-                textColor = Color.WHITE
+            backgroundColor = Color.WHITE
 
-                setAutoSizeTextTypeUniformWithConfiguration(1, displayMetrics.widthPixels, 1, TypedValue.COMPLEX_UNIT_PX)
-            }
-            letterSendingBox = sendingBox
-            visualSendingBox = sendingBox
-            addView(sendingBox)
+            relativeLayout {
+                with (surfaceView) {
+                    val dim = Math.min(displayMetrics.widthPixels, displayMetrics.heightPixels)
+                    val lp = RelativeLayout.LayoutParams(dim, dim)
+                    lp.centerHorizontally()
+                    layoutParams = lp
+                }
+                addView(surfaceView)
+                editorWidget = editText {
+                    hint = "Message to morse"
+                    inputType = InputType.TYPE_CLASS_TEXT
+                    setImeActionLabel("Send", EditorInfo.IME_ACTION_SEND)
+                    imeOptions = EditorInfo.IME_ACTION_SEND
 
-            val editorWidget = editText {
-                hint = "Message to translate to morse code"
-                inputType = InputType.TYPE_CLASS_TEXT
-                setImeActionLabel("Send", EditorInfo.IME_ACTION_SEND)
-                imeOptions = EditorInfo.IME_ACTION_SEND
+                    onEditorAction { _, actionId, _ ->
+                        if (actionId == EditorInfo.IME_ACTION_UNSPECIFIED || actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_SEND) {
+                            beam(text.toString())
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    val lp = RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.WRAP_CONTENT)
+                    lp.centerInParent()
+                    layoutParams = lp
 
-                onEditorAction { _, actionId, _ ->
-                    if (actionId == EditorInfo.IME_ACTION_UNSPECIFIED || actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_SEND) {
-                        beam(text.toString())
-                        true
-                    } else {
-                        false
+                    gravity = Gravity.CENTER
+                    textSize = 40f
+                }
+                mainHandler.post {
+                    // somehow, this poor thing never gets focus
+                    tryOrContinue {
+                        editorWidget.requestFocus()
+                    }
+                    tryOrContinue {
+                        inputMethodManager.showSoftInput(editorWidget, 0)
+                    }
+                    tryOrContinue {
+                        inputMethodManager.toggleSoftInput(InputMethodManager.SHOW_FORCED, InputMethodManager.HIDE_IMPLICIT_ONLY)
+                    }
+                    tryOrContinue {
+                        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
                     }
                 }
-
-                gravity = Gravity.CENTER
-                textSize = 40f
             }
+
 
             imageButton(R.drawable.ic_present_to_all_black_120dp) {
                 onClick {
@@ -133,7 +175,7 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
             }
 
             messageSendingBox = textView {
-                textSize = 64f
+                textSize = 40f
                 gravity = Gravity.CENTER_HORIZONTAL
             }
         }
@@ -146,8 +188,47 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
         }
     }
 
+    override fun onPause() {
+        reportGlobalEvent()
+
+        tryOrContinue {
+            helioGLSurfaceView?.onPause()
+        }
+
+        super.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        reportGlobalEvent()
+
+        tryOrContinue {
+            helioGLSurfaceView?.onResume()
+        }
+    }
+
+    override fun onStop() {
+        reportGlobalEvent()
+        super.onStop()
+    }
+
     override fun onDestroy() {
         reportGlobalEvent()
+
+        tryOrContinue {
+            helioCameraGLVisualisation.camera?.startPreview()
+        }
+        tryOrContinue {
+            helioCameraGLVisualisation.camera?.release()
+        }
+        helioCameraGLVisualisation.camera = null
+
+        tryOrContinue {
+            helioGLRenderer?.disposeOfRenderer()
+        }
+        helioGLRenderer = null
+
         super.onDestroy()
     }
 }

@@ -260,7 +260,7 @@ object HelioMorseCodec : AnkoLogger {
             get() = Math.max((meanLoadness+maxLoudness)/2, maxLoudness-meanLoadness)
 
         fun addAmplitude(amp:Float) {
-            require(!amp.isNaN(), { "attempting to add a NaN to LoudnessFilter after $currentAmplitudeIndex samples" })
+            require(!amp.isNaN()) { "attempting to add a NaN to LoudnessFilter after $currentAmplitudeIndex samples" }
             val index = (currentAmplitudeIndex % amplitudesSquared.size).toInt()
             if (currentAmplitudeIndex >= amplitudesSquared.size) {
                 totalLoudnessSquared -= amplitudesSquared[index]
@@ -285,7 +285,7 @@ object HelioMorseCodec : AnkoLogger {
     fun signedDurationsFromAmplitudes(amplitude:FloatArray, sampleRateHertz:Double, lookbackSeconds:Double = Math.max(16.0/sampleRateHertz, 0.003)):DoubleArray {
         val loudness = FloatArray(amplitude.size)
         val filter = LoudnessFilter(sampleRateHertz, lookbackSeconds)
-        for (i in 0..amplitude.size-1) {
+        for (i in 0 until amplitude.size) {
             filter.addAmplitude(amplitude[i])
             val estimate = filter.loudnessEstimate
             loudness[i] = estimate.toFloat()

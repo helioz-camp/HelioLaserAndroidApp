@@ -30,4 +30,4 @@ class HelioMorseCodeLettersToSymbolsTest : StringSpec({
     "a" {
         HelioMorseCodec.convertTextToMorse("a") shouldBe ".-"
     }
-}) {}
+})
