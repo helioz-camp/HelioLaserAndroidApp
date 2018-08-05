@@ -88,6 +88,7 @@ class HelioGLRenderer(val helioCameraGLVisualisation: HelioCameraGLVisualisation
         }
         tryOrContinue {
             drawFrame()
+            GLES20.glFinish()
         }
     }
 

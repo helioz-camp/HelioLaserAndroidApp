@@ -2,6 +2,8 @@ package xyz.helioz.heliolaser
 
 import android.graphics.SurfaceTexture
 import android.hardware.Camera
+import android.hardware.Camera.Parameters.FLASH_MODE_OFF
+import android.hardware.Camera.Parameters.FLASH_MODE_TORCH
 import android.opengl.GLES11Ext
 import android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES
 import android.opengl.GLES20
@@ -213,5 +215,27 @@ void main() {
         camera.startPreview()
         this.camera = camera
     }
+
+
+    fun morseSignalOn() {
+        background.fill(0f)
+
+        camera?.let {
+            val params = it.parameters
+            params.flashMode = FLASH_MODE_TORCH
+            it.parameters = params
+        }
+    }
+
+    fun morseSignalOff() {
+        background.fill(1f)
+
+        camera?.let {
+            val params = it.parameters
+            params.flashMode = FLASH_MODE_OFF
+            it.parameters = params
+        }
+    }
+
 
 }

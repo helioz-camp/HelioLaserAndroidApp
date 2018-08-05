@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.os.Handler
+import android.os.HandlerThread
 import android.support.v7.app.AppCompatActivity
 import android.text.InputType
 import android.view.Gravity
@@ -31,7 +32,9 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
     var helioGLRenderer: HelioGLRenderer? = null
     var helioCameraGLVisualisation : HelioCameraGLVisualisation = HelioCameraGLVisualisation()
 
+
     private fun animateBackgroundMorseCode(message: String) {
+        Audiomixclient.audiomixclient.play_morse_message(message)
         sendingMessage = HelioMorseCodec.convertTextToMorse(message)
         maybeSendOneLetter()
     }
@@ -40,7 +43,7 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
         if (activelySendingNow) {
             return
         }
-        helioCameraGLVisualisation.background.fill(1f)
+        helioCameraGLVisualisation.morseSignalOff()
         audioTonePlayer.stopPlayingTone()
         messageSendingBox.text = sendingMessage
 
@@ -61,7 +64,11 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
                 maybeSendOneLetter()
             } else {
                 val signedTiming = signedTimings.removeFirst()
-                helioCameraGLVisualisation.background.fill(if (signedTiming > 0) 0f else 1f)
+                if (signedTiming > 0) {
+                    helioCameraGLVisualisation.morseSignalOn()
+                } else {
+                    helioCameraGLVisualisation.morseSignalOff()
+                }
 
                 if (signedTiming > 0) {
                     audioTonePlayer.startPlayingTone(signedTiming)
