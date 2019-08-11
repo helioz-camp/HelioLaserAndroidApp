@@ -10,6 +10,7 @@ import android.opengl.GLES20
 import android.opengl.GLES20.*
 import android.view.MotionEvent
 import org.jetbrains.anko.AnkoLogger
+import org.jetbrains.anko.doAsync
 import org.jetbrains.anko.info
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -65,7 +66,7 @@ void main() {
       (1.0 - frag_coord.x));
   vec2 from_center = 2.0 * (frag_coord - vec2(0.5, 0.5));
   float distance = dot(from_center, from_center);
-  float blend = clamp(distance*distance*distance*distance + 0.1, 0.0, 1.0);
+  float blend = clamp(distance*distance*distance*distance + 0.1, 0.95, 1.0);
   vec3 cameraTextureValue =
 	0.5 * texture2D(textureSamplerForFragmentShader, textureCoordinateForFragmentShader + vec2(0.002, 0.0)).xyz
        + 0.5 * texture2D(textureSamplerForFragmentShader, textureCoordinateForFragmentShader + vec2(-0.002, 0.0)).xyz;
@@ -77,7 +78,8 @@ void main() {
   vec3 rgb = camBlend;
 
   if (h > 0. && h < 1.) {
-     float hue = .85*(mix(h, 1. - (1. - h*h), .5));
+     float inverse_h = 1. - h;
+     float hue = .85*(mix(inverse_h, 1. - (1. - inverse_h*inverse_h), .5));
      float sat = 1.;
      float lum = clamp(atan(uv.y, uv.x) + .2, 0., 1.);
      rgb = hsv2rgb(vec3(hue,sat,lum));
@@ -115,12 +117,30 @@ void main() {
             val cam = Camera.open(bestCamera)
             info("opened camera $cam with $info params ${cam.parameters.flatten()}")
             helioGLRenderer.backgroundGLAction {
-                prepareCameraTexture(helioGLRenderer!!, cam, info)
+                prepareCameraTexture(helioGLRenderer, cam, info)
             }
         }, "camera open thread").start()
+
+        background.fill(1f)
+    }
+
+    fun releaseVisualisationResources() {
+        tryOrContinue {
+            camera?.release()
+        }
+        camera = null
+        tryOrContinue {
+            cameraTexture?.release()
+        }
+        cameraTexture = null
+
     }
 
     fun renderVisualisationFrame(helioGLRenderer: HelioGLRenderer) {
+        checkedGL {
+            glClearColor(background[0], background[1], background[2], 1f)
+            glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
+        }
         checkedGL {
             visualisationProgram.openGLAttachProgram()
             visualisationProgram.openGLSetUniformFloat("wobble", floatArrayOf(
@@ -131,8 +151,8 @@ void main() {
                     floatArrayOf(helioGLRenderer.surfaceWidth.toFloat(), helioGLRenderer.surfaceHeight.toFloat()))
             visualisationProgram.openGLSetUniformInt("textureSamplerForFragmentShader", 0)
             visualisationProgram.openGLSetUniformFloat("background", background)
-            GLES20.glActiveTexture(GL_TEXTURE0)
-            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, openGLTexture)
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_EXTERNAL_OES, openGLTexture)
             glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
             glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
             glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
@@ -146,21 +166,21 @@ void main() {
                     6
             )
 
-            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0)
+            glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0)
         }
 
         checkedGL {
             sampleBuffer.clear()
-            GLES20.glReadPixels(
+            glReadPixels(
                     helioGLRenderer.surfaceWidth/2 - sampleDimensionPixels/2,
                     helioGLRenderer.surfaceHeight/2 - sampleDimensionPixels/2,
                     sampleDimensionPixels,
                     sampleDimensionPixels,
-                    GLES20.GL_RGBA,
-                    GLES20.GL_UNSIGNED_BYTE,
+                    GL_RGBA,
+                    GL_UNSIGNED_BYTE,
                     sampleBuffer)
 
-            val sampleCount = sampleBuffer.capacity()/4
+            val sampleCount = sampleBuffer.capacity()/4 - 1
             val greens = IntArray(sampleCount)
             for (i in greens.indices) {
                 greens[i] = sampleBuffer[i * 4 + 1].toInt() and 0xff
@@ -168,18 +188,17 @@ void main() {
             greens.sort()
 
             val amp = greens[sampleCount/3].toFloat() + greens[sampleCount/2].toFloat() + greens[(2*sampleCount)/3].toFloat()
+            val now = HelioLaserApplication.helioLaserApplicationInstance?.applicationAgeSeconds
             loudnessFilter.addAmplitude(amp)
-            val filterDistance = (loudnessFilter.meanLoadness+loudnessFilter.maxLoudness)/2
-            if (amp > loudnessFilter.meanLoadness + filterDistance/4) {
-                background.fill(1f)
-            } else if (amp < loudnessFilter.meanLoadness - filterDistance/4) {
-                background.fill(0f)
+            val filtered = loudnessFilter.loudnessEstimate
+            val threshold = loudnessFilter.filterThresholdEstimate
+            doAsync {
+                info("HelioCamera Measurement: $now,$amp,$filtered,$threshold")
             }
         }
     }
 
-    fun visualiseMotionEvent(motionEvent: MotionEvent) {
-        if (motionEvent.action == MotionEvent.ACTION_BUTTON_RELEASE) {
+    fun flipVisualisationCamera(motionEvent: MotionEvent) {
             tryOrContinue {
                 val params = camera?.parameters
                 params?.autoExposureLock = true
@@ -190,13 +209,13 @@ void main() {
                 params?.autoWhiteBalanceLock = true
                 camera?.parameters = params
             }
-        }
+
     }
 
     fun prepareCameraTexture(helioGLRenderer: HelioGLRenderer, camera: Camera, info: Camera.CameraInfo) {
         checkedGL {
-            GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, openGLTexture)
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_EXTERNAL_OES, openGLTexture)
         }
         val cameraFrameCount = AtomicLong()
         cameraTexture = SurfaceTexture(openGLTexture)

@@ -128,13 +128,13 @@ class HelioGLProgram : AnkoLogger {
                 val validateStatusOutput = IntArray(1)
                 GLES20.glGetProgramiv(glProgram, GLES20.GL_VALIDATE_STATUS, validateStatusOutput, 0)
                 if (GLES20.GL_TRUE != validateStatusOutput[0]) {
+                    checkedGL {
+                        val glInfo = GLES20.glGetProgramInfoLog(glProgram)
+                        if (!glInfo.isNullOrEmpty()) {
+                            warn { "OpenGL glGetProgramInfoLog: $glInfo" }
+                        }
+                    }
                     throw RuntimeException("OpenGL glValidateProgram for $this failed")
-                }
-            }
-            checkedGL {
-                val glInfo = GLES20.glGetProgramInfoLog(glProgram)
-                if (!glInfo.isNullOrEmpty()) {
-                    warn { "OpenGL glGetProgramInfoLog: $glInfo" }
                 }
             }
         }

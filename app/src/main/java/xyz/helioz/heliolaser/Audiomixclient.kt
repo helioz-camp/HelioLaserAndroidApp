@@ -28,7 +28,7 @@ class Audiomixclient : AnkoLogger {
     private val EMULATOR_SERVER_IP = "10.0.2.2"
     val datagramSocket: DatagramSocket by lazy {
         val socket = DatagramSocket(LISTEN_UDP_PORT)
-        socket.setBroadcast(true)
+        socket.broadcast = true
         socket
     }
 
@@ -74,7 +74,7 @@ class Audiomixclient : AnkoLogger {
     private val broadcastAddress by lazy {
         val wifi = HelioLaserApplication.helioLaserApplicationInstance?.applicationContext?.wifiManager
         val dhcp = wifi?.dhcpInfo
-        if (dhcp == null || dhcp.ipAddress ?: 0 == 0) {
+        if (dhcp == null || dhcp.ipAddress == 0) {
             // assume we are on the emulator
             InetAddress.getByName(EMULATOR_SERVER_IP)
         } else {

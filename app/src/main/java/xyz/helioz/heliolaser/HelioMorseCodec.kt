@@ -3,8 +3,7 @@ package xyz.helioz.heliolaser
 import org.jetbrains.anko.AnkoLogger
 import org.jetbrains.anko.warn
 import java.util.*
-import kotlin.math.absoluteValue
-import kotlin.math.sign
+import kotlin.math.*
 
 object HelioMorseCodec : AnkoLogger {
     val characterToMorse = {
@@ -133,7 +132,7 @@ object HelioMorseCodec : AnkoLogger {
 
     fun convertMorseToSignedDurations(
             morse:String,
-            timings: HelioMorseCodec.HelioMorseTimings
+            timings: HelioMorseTimings
             ):DoubleArray {
         with(MorseDurationsBuffer()) {
             for (symbol in morse) {
@@ -159,7 +158,7 @@ object HelioMorseCodec : AnkoLogger {
         }
     }
 
-    fun convertSignedDurationsToMorse(signedSeconds: DoubleArray, helioMorseTimings: HelioMorseCodec.HelioMorseTimings):String {
+    fun convertSignedDurationsToMorse(signedSeconds: DoubleArray, helioMorseTimings: HelioMorseTimings):String {
         with (StringBuilder()) {
             for (signedSecond in signedSeconds) {
                 if (signedSecond < 0) {
@@ -244,8 +243,8 @@ object HelioMorseCodec : AnkoLogger {
         val (symbolSpace, _) = separatePeaks(offSeconds)
 
         return HelioMorseTimings(ditSeconds = dit,
-                dahSeconds = Math.max(dah, dit*3),
-                symbolSpaceSeconds = Math.min(symbolSpace, dit))
+                dahSeconds = max(dah, dit*3),
+                symbolSpaceSeconds = min(symbolSpace, dit))
     }
 
     class LoudnessFilter(sampleRateHertz: Double, lookbackSeconds: Double) {
@@ -257,7 +256,7 @@ object HelioMorseCodec : AnkoLogger {
         var maxLoudness = 0.0
 
         val filterThresholdEstimate:Double
-            get() = Math.max((meanLoadness+maxLoudness)/2, maxLoudness-meanLoadness)
+            get() = max((meanLoadness+maxLoudness)/2, maxLoudness-meanLoadness)
 
         fun addAmplitude(amp:Float) {
             require(!amp.isNaN()) { "attempting to add a NaN to LoudnessFilter after $currentAmplitudeIndex samples" }
@@ -270,19 +269,19 @@ object HelioMorseCodec : AnkoLogger {
             totalLoudnessSquared += squared
             currentAmplitudeIndex ++
 
-            loudnessEstimate = Math.sqrt(totalLoudnessSquared / Math.min(amplitudesSquared.size.toLong(), currentAmplitudeIndex))
+            loudnessEstimate = sqrt(totalLoudnessSquared / min(amplitudesSquared.size.toLong(), currentAmplitudeIndex))
             meanLoadness += (loudnessEstimate - meanLoadness) / currentAmplitudeIndex
-            maxLoudness = Math.max(loudnessEstimate, maxLoudness)
+            maxLoudness = max(loudnessEstimate, maxLoudness)
         }
 
     }
 
     class GoertzelFilter(frequencyToDetectAsProportionOfSampling:Double, outputFunction:(Double)->Unit) {
-        val goertzelCoefficient = 2 * Math.cos(2 * Math.PI * frequencyToDetectAsProportionOfSampling)
+        val goertzelCoefficient = 2 * cos(2 * Math.PI * frequencyToDetectAsProportionOfSampling)
 
     }
 
-    fun signedDurationsFromAmplitudes(amplitude:FloatArray, sampleRateHertz:Double, lookbackSeconds:Double = Math.max(16.0/sampleRateHertz, 0.003)):DoubleArray {
+    fun signedDurationsFromAmplitudes(amplitude:FloatArray, sampleRateHertz:Double, lookbackSeconds:Double = max(16.0/sampleRateHertz, 0.003)):DoubleArray {
         val loudness = FloatArray(amplitude.size)
         val filter = LoudnessFilter(sampleRateHertz, lookbackSeconds)
         for (i in 0 until amplitude.size) {

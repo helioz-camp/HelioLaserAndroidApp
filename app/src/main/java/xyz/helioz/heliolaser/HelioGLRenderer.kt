@@ -61,13 +61,15 @@ class HelioGLRenderer(val helioCameraGLVisualisation: HelioCameraGLVisualisation
     fun disposeOfRenderer() {
         reportGlobalEvent()
         tryOrContinue {
-            glHelperThreadHandler.post { Looper.myLooper().quit() }
+            glHelperThreadHandler.post { Looper.myLooper()?.quit() }
+        }
+        tryOrContinue {
+            helioCameraGLVisualisation.releaseVisualisationResources()
         }
     }
 
 
     private fun drawFrame() {
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
         val surfaceTextures = HashSet<SurfaceTexture>()
         surfaceTextures.addAll(surfacesTexturesToUpdateBeforeDrawing)
         for (texture in surfaceTextures) {
@@ -199,13 +201,13 @@ class HelioGLRenderer(val helioCameraGLVisualisation: HelioCameraGLVisualisation
     private val textureHandles: ArrayBlockingQueue<Int> = ArrayBlockingQueue(8)
 
     fun allocateGLTexture():Int {
-        return textureHandles.take()!!
+        return textureHandles.take()
     }
 
     fun returnGLTexture(openGLTexture: Int) {
         backgroundGLAction { // need to do this on a GL thread
             checkedGL {
-                val intBuffer = ByteBuffer.allocateDirect(java.lang.Integer.BYTES).order(ByteOrder.nativeOrder()).asIntBuffer().put(openGLTexture)
+                val intBuffer = ByteBuffer.allocateDirect(Integer.BYTES).order(ByteOrder.nativeOrder()).asIntBuffer().put(openGLTexture)
                 intBuffer.position(0)
 
                 GLES20.glDeleteTextures(1, intBuffer)

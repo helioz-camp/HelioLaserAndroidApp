@@ -4,8 +4,7 @@ import android.graphics.Color
 import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.os.Handler
-import android.os.HandlerThread
-import android.support.v7.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatActivity
 import android.text.InputType
 import android.view.Gravity
 import android.view.MotionEvent
@@ -18,6 +17,8 @@ import android.widget.TextView
 import org.jetbrains.anko.*
 import java.util.*
 import kotlin.math.absoluteValue
+import kotlin.math.ceil
+import kotlin.math.min
 
 class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
 
@@ -30,7 +31,7 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
     private val audioTonePlayer = HelioAudioTonePlayer()
     private var helioGLSurfaceView: GLSurfaceView? = null
     var helioGLRenderer: HelioGLRenderer? = null
-    var helioCameraGLVisualisation : HelioCameraGLVisualisation = HelioCameraGLVisualisation()
+    val helioCameraGLVisualisation : HelioCameraGLVisualisation = HelioCameraGLVisualisation()
 
 
     private fun animateBackgroundMorseCode(message: String) {
@@ -76,7 +77,7 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
 
                 mainHandler.postDelayed({
                     popTiming()
-                }, Math.ceil(1000.0 * signedTiming.absoluteValue).toLong())
+                }, ceil(1000.0 * signedTiming.absoluteValue).toLong())
             }
         }
 
@@ -95,10 +96,15 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
                 setMeasuredDimension(w, h)
             }
 
-            override fun onTouchEvent(event: MotionEvent): Boolean {
-                info{"GLSurfaceView onTouchEvent $event"}
-                helioCameraGLVisualisation.visualiseMotionEvent(event)
-                return true
+            override fun onTouchEvent(motionEvent: MotionEvent): Boolean {
+                info{"GLSurfaceView onTouchEvent $motionEvent"}
+                return if (motionEvent.action == MotionEvent.ACTION_BUTTON_RELEASE) {
+                    helioCameraGLVisualisation.flipVisualisationCamera(motionEvent)
+                    performClick()
+                    true
+                } else {
+                    super.onTouchEvent(motionEvent)
+                }
             }
 
             override fun performClick(): Boolean {
@@ -129,7 +135,7 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
 
             relativeLayout {
                 with (surfaceView) {
-                    val dim = Math.min(displayMetrics.widthPixels, displayMetrics.heightPixels)
+                    val dim = min(displayMetrics.widthPixels, displayMetrics.heightPixels)
                     val lp = RelativeLayout.LayoutParams(dim, dim)
                     lp.centerHorizontally()
                     layoutParams = lp

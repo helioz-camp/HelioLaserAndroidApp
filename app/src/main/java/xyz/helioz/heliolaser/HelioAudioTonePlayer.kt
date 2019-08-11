@@ -4,6 +4,9 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import org.jetbrains.anko.doAsync
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.sin
 
 class HelioAudioTonePlayer(toneHertz:Double=780.0) : AutoCloseable {
     override fun close() {
@@ -22,7 +25,7 @@ class HelioAudioTonePlayer(toneHertz:Double=780.0) : AutoCloseable {
         val buffer = ShortArray((nativeOutputSampleRate/toneHertz).toInt())
         for (i in buffer.indices) {
             val time = i/nativeOutputSampleRate.toDouble()
-            buffer[i] = (Short.MAX_VALUE.toFloat() * Math.sin(time * toneHertz * 2.0 * Math.PI).toFloat()).toShort()
+            buffer[i] = (Short.MAX_VALUE.toFloat() * sin(time * toneHertz * 2.0 * Math.PI).toFloat()).toShort()
         }
 
         val track = AudioTrack(
@@ -30,7 +33,7 @@ class HelioAudioTonePlayer(toneHertz:Double=780.0) : AutoCloseable {
                 nativeOutputSampleRate,
                 channelConfig,
                 audioFormat,
-                Math.max(AudioTrack.getMinBufferSize(audioStreamType, channelConfig, audioFormat), buffer.size*4),
+                max(AudioTrack.getMinBufferSize(audioStreamType, channelConfig, audioFormat), buffer.size*4),
                 AudioTrack.MODE_STATIC
         )
 
@@ -47,7 +50,7 @@ class HelioAudioTonePlayer(toneHertz:Double=780.0) : AutoCloseable {
                 audioTrack.reloadStaticData()
             }
             audioTrack.setLoopPoints(0, samplesInTone,
-                    Math.floor(durationSeconds/samplesInTone*audioTrack.sampleRate).toInt())
+                    floor(durationSeconds/samplesInTone*audioTrack.sampleRate).toInt())
 
             audioTrack.play()
         }
