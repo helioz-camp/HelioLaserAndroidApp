@@ -7,11 +7,14 @@ import android.os.Handler
 import androidx.appcompat.app.AppCompatActivity
 import android.text.InputType
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.RelativeLayout
 import android.widget.TextView
 import org.jetbrains.anko.*
@@ -130,10 +133,8 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
         helioGLRenderer?.setupSurfaceViewForGL(surfaceView)
         helioGLSurfaceView = surfaceView
 
-        val fullLayout = verticalLayout {
-            backgroundColor = Color.WHITE
-
-            relativeLayout {
+        val fullLayout = relativeLayout {
+                backgroundColor = Color.WHITE
                 with (surfaceView) {
                     val dim = min(displayMetrics.widthPixels, displayMetrics.heightPixels)
                     val lp = RelativeLayout.LayoutParams(dim, dim)
@@ -141,59 +142,70 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
                     layoutParams = lp
                 }
                 addView(surfaceView)
-                editorWidget = editText {
-                    hint = "Message to morse"
-                    inputType = InputType.TYPE_CLASS_TEXT
-                    setImeActionLabel("Send", EditorInfo.IME_ACTION_SEND)
-                    imeOptions = EditorInfo.IME_ACTION_SEND
-
-                    onEditorAction { _, actionId, _ ->
-                        if (actionId == EditorInfo.IME_ACTION_UNSPECIFIED || actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_SEND) {
-                            beam(text.toString())
-                            true
-                        } else {
-                            false
-                        }
+                editorWidget = object : EditText(context) {
+                    override fun onKeyPreIme(keyCode: Int, keyEvent: KeyEvent?): Boolean {
+                        info { "onKeyPreIme ${keyCode} ${keyEvent}"}
+                        return super.onKeyPreIme(keyCode, keyEvent)
                     }
-                    val lp = RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.WRAP_CONTENT)
-                    lp.centerInParent()
-                    layoutParams = lp
 
+                }
+                verticalLayout {
+                    layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
                     gravity = Gravity.CENTER
-                    textSize = 40f
-                }
-                mainHandler.post {
-                    // somehow, this poor thing never gets focus
-                    tryOrContinue {
-                        editorWidget.requestFocus()
+                    imageButton(R.drawable.ic_present_to_all_black_120dp) {
+                        onClick {
+                            beam(editorWidget.text.toString())
+                        }
+                        backgroundColor = Color.TRANSPARENT
                     }
-                    tryOrContinue {
-                        inputMethodManager.showSoftInput(editorWidget, 0)
-                    }
-                    tryOrContinue {
-                        inputMethodManager.toggleSoftInput(InputMethodManager.SHOW_FORCED, InputMethodManager.HIDE_IMPLICIT_ONLY)
-                    }
-                    tryOrContinue {
-                        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
-                    }
-                }
-            }
+
+                    with(editorWidget) {
+                        hint = "Message to morse"
+                        inputType = InputType.TYPE_CLASS_TEXT
+                        setImeActionLabel("Send", EditorInfo.IME_ACTION_SEND)
+                        imeOptions = EditorInfo.IME_ACTION_SEND
 
 
-            imageButton(R.drawable.ic_present_to_all_black_120dp) {
-                onClick {
-                    beam(editorWidget.text.toString())
-                }
-                backgroundColor = Color.TRANSPARENT
-            }
+                        onEditorAction { _, actionId, _ ->
+                            if (actionId == EditorInfo.IME_ACTION_UNSPECIFIED || actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_SEND) {
+                                beam(text.toString())
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        val lp = RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.WRAP_CONTENT)
+                        lp.centerInParent()
+                        layoutParams = lp
 
-            messageSendingBox = textView {
-                textSize = 40f
-                gravity = Gravity.CENTER_HORIZONTAL
-            }
+                        inputType=InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_CLASS_TEXT
+
+                        gravity = Gravity.CENTER
+                        textSize = 40f
+                    }
+                    addView(editorWidget)
+                    messageSendingBox = textView {
+                        textSize = 40f
+                        gravity = Gravity.CENTER_HORIZONTAL
+                    }
+
+                }
         }
 
         setContentView(fullLayout)
+
+        tryOrContinue {
+            editorWidget.requestFocus()
+        }
+        tryOrContinue {
+            inputMethodManager.showSoftInput(editorWidget, 0)
+        }
+        tryOrContinue {
+            inputMethodManager.toggleSoftInput(InputMethodManager.SHOW_FORCED, InputMethodManager.HIDE_IMPLICIT_ONLY)
+        }
+        tryOrContinue {
+            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        }
 
         val audioRecorder = HelioAudioRecorder()
         doAsync {

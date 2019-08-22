@@ -4,9 +4,7 @@ import android.graphics.SurfaceTexture
 import android.hardware.Camera
 import android.hardware.Camera.Parameters.FLASH_MODE_OFF
 import android.hardware.Camera.Parameters.FLASH_MODE_TORCH
-import android.opengl.GLES11Ext
 import android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES
-import android.opengl.GLES20
 import android.opengl.GLES20.*
 import android.view.MotionEvent
 import org.jetbrains.anko.AnkoLogger
@@ -101,23 +99,29 @@ void main() {
         openGLTexture = helioGLRenderer.allocateGLTexture()
 
         Thread({
-            val info = Camera.CameraInfo()
             var bestCamera = -1
-            for (camId in 0 until Camera.getNumberOfCameras()) {
-                bestCamera = camId
-                Camera.getCameraInfo(camId, info)
+            var info:Camera.CameraInfo? = null
+            tryOrContinue {
+                val info = Camera.CameraInfo()
+                for (camId in 0 until Camera.getNumberOfCameras()) {
+                    bestCamera = camId
+                    Camera.getCameraInfo(camId, info)
 
-                if (info.facing == Camera.CameraInfo.CAMERA_FACING_BACK) {
-                    break
+                    if (info.facing == Camera.CameraInfo.CAMERA_FACING_BACK) {
+                        break
+                    }
                 }
             }
-            if (bestCamera < 0) {
+            if (bestCamera < 0 || info == null) {
                 info("no cameras")
-            }
-            val cam = Camera.open(bestCamera)
-            info("opened camera $cam with $info params ${cam.parameters.flatten()}")
-            helioGLRenderer.backgroundGLAction {
-                prepareCameraTexture(helioGLRenderer, cam, info)
+            } else {
+                tryOrContinue {
+                    val cam = Camera.open(bestCamera)
+                    info("opened camera $cam with $info params ${cam.parameters.flatten()}")
+                    helioGLRenderer.backgroundGLAction {
+                        prepareCameraTexture(helioGLRenderer, cam, info)
+                    }
+                }
             }
         }, "camera open thread").start()
 
@@ -129,6 +133,9 @@ void main() {
             camera?.release()
         }
         camera = null
+        tryOrContinue {
+            visualisationProgram.openGLDeleteProgram()
+        }
         tryOrContinue {
             cameraTexture?.release()
         }
@@ -167,34 +174,6 @@ void main() {
             )
 
             glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0)
-        }
-
-        checkedGL {
-            sampleBuffer.clear()
-            glReadPixels(
-                    helioGLRenderer.surfaceWidth/2 - sampleDimensionPixels/2,
-                    helioGLRenderer.surfaceHeight/2 - sampleDimensionPixels/2,
-                    sampleDimensionPixels,
-                    sampleDimensionPixels,
-                    GL_RGBA,
-                    GL_UNSIGNED_BYTE,
-                    sampleBuffer)
-
-            val sampleCount = sampleBuffer.capacity()/4 - 1
-            val greens = IntArray(sampleCount)
-            for (i in greens.indices) {
-                greens[i] = sampleBuffer[i * 4 + 1].toInt() and 0xff
-            }
-            greens.sort()
-
-            val amp = greens[sampleCount/3].toFloat() + greens[sampleCount/2].toFloat() + greens[(2*sampleCount)/3].toFloat()
-            val now = HelioLaserApplication.helioLaserApplicationInstance?.applicationAgeSeconds
-            loudnessFilter.addAmplitude(amp)
-            val filtered = loudnessFilter.loudnessEstimate
-            val threshold = loudnessFilter.filterThresholdEstimate
-            doAsync {
-                info("HelioCamera Measurement: $now,$amp,$filtered,$threshold")
-            }
         }
     }
 

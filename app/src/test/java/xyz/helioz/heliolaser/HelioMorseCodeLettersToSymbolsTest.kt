@@ -17,11 +17,20 @@ class HelioMorseCodeLettersToSymbolsTest : StringSpec({
         )
     }
 
-    "all characters should convert back and forth" {
+    "all known characters should convert back and forth" {
         for (char in HelioMorseCodec.characterToMorse.keys) {
             convertBackAndForth(char.toString())
         }
     }
+
+    "all pairs of characters should convert back and forth" {
+        for (char in HelioMorseCodec.characterToMorse.keys) {
+            for (nextChar in HelioMorseCodec.characterToMorse.keys) {
+                convertBackAndForth(char.toString() + nextChar.toString())
+            }
+        }
+    }
+
 
     "sos" {
         HelioMorseCodec.convertTextToMorse("sos") shouldBe "... --- ..."

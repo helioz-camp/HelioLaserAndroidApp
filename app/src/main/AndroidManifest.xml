@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="xyz.helioz.heliolaser">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -24,7 +25,7 @@
         >
         <activity
             android:name="xyz.helioz.heliolaser.HelioLaserActivity"
-            android:windowSoftInputMode="stateVisible"
+            android:windowSoftInputMode="stateAlwaysVisible"
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|mcc|mnc"
             android:label="@string/app_name"
             android:screenOrientation="portrait"

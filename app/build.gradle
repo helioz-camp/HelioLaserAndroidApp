@@ -27,17 +27,17 @@ android {
 dependencies {
     implementation fileTree(include: ['*.j  ar'], dir: 'libs')
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-    implementation 'androidx.appcompat:appcompat:1.0.0'
+    implementation 'androidx.appcompat:appcompat:1.0.2'
     implementation 'org.jetbrains.anko:anko-sdk23:0.8.3'
     implementation 'org.jetbrains.anko:anko-support-v4:0.8.3'
     implementation 'org.jetbrains.anko:anko-appcompat-v7:0.8.3'
     implementation 'org.jetbrains.anko:anko-sqlite:0.9'
     implementation 'com.github.salomonbrys.kotson:kotson:2.5.0'
-
+    implementation 'com.github.wendykierp:JTransforms:3.1'
     testImplementation 'junit:junit:4.12'
     testImplementation 'io.kotlintest:kotlintest-runner-junit4:3.1.8'
     testImplementation "org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version"
-    androidTestImplementation 'androidx.test:runner:1.1.0'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.0'
+    androidTestImplementation 'androidx.test:runner:1.2.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
 }
 
