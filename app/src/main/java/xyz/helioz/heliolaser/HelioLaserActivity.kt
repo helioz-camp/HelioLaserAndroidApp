@@ -242,14 +242,6 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
         reportGlobalEvent()
 
         tryOrContinue {
-            helioCameraGLVisualisation.camera?.startPreview()
-        }
-        tryOrContinue {
-            helioCameraGLVisualisation.camera?.release()
-        }
-        helioCameraGLVisualisation.camera = null
-
-        tryOrContinue {
             helioGLRenderer?.disposeOfRenderer()
         }
         helioGLRenderer = null

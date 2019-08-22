@@ -140,7 +140,7 @@ class HelioMorseCodeAudioTest : StringSpec({
             val toneFilters = ArrayList<GoertzelFilter>()
             for (freq in listOf(toneEstimate.frequencyHz/2, toneEstimate.frequencyHz*.75, toneEstimate.frequencyHz, toneEstimate.frequencyHz*1.25, toneEstimate.frequencyHz*2)) {
 
-                toneFilters.add(GoertzelFilter(targetFrequencyHz = freq.toDouble(), samplingHz = samplesPerSecond.toDouble())
+                toneFilters.add(GoertzelFilter(targetFrequencyHz = freq.toDouble(), samplingHz = samplesPerSecond.toDouble()))
             }
 
             println("${toneEstimate} from ${lowest} to ${highest}")

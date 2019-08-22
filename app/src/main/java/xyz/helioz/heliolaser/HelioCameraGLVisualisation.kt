@@ -64,7 +64,7 @@ void main() {
       (1.0 - frag_coord.x));
   vec2 from_center = 2.0 * (frag_coord - vec2(0.5, 0.5));
   float distance = dot(from_center, from_center);
-  float blend = clamp(distance*distance*distance*distance + 0.1, 0.95, 1.0);
+  float blend = clamp(distance*distance*distance*distance + 0.1, 0.9, 1.0);
   vec3 cameraTextureValue =
 	0.5 * texture2D(textureSamplerForFragmentShader, textureCoordinateForFragmentShader + vec2(0.002, 0.0)).xyz
        + 0.5 * texture2D(textureSamplerForFragmentShader, textureCoordinateForFragmentShader + vec2(-0.002, 0.0)).xyz;
@@ -102,12 +102,12 @@ void main() {
             var bestCamera = -1
             var info:Camera.CameraInfo? = null
             tryOrContinue {
-                val info = Camera.CameraInfo()
+                info = Camera.CameraInfo()
                 for (camId in 0 until Camera.getNumberOfCameras()) {
                     bestCamera = camId
                     Camera.getCameraInfo(camId, info)
 
-                    if (info.facing == Camera.CameraInfo.CAMERA_FACING_BACK) {
+                    if (info?.facing == Camera.CameraInfo.CAMERA_FACING_BACK) {
                         break
                     }
                 }
@@ -119,7 +119,7 @@ void main() {
                     val cam = Camera.open(bestCamera)
                     info("opened camera $cam with $info params ${cam.parameters.flatten()}")
                     helioGLRenderer.backgroundGLAction {
-                        prepareCameraTexture(helioGLRenderer, cam, info)
+                        prepareCameraTexture(helioGLRenderer, cam, info!!)
                     }
                 }
             }
