@@ -6,17 +6,16 @@ import android.content.res.Configuration
 import android.os.Bundle
 import android.os.Looper
 import com.google.gson.JsonObject
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import org.jetbrains.anko.AnkoLogger
 import org.jetbrains.anko.info
 import org.jetbrains.anko.warn
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
 
-
-class HelioLaserApplication: Application(), AnkoLogger {
+class HelioLaserApplication : Application(), AnkoLogger {
     private val startTimeMillis = System.currentTimeMillis()
 
-    val applicationAgeSeconds:Double
+    val applicationAgeSeconds: Double
         get() = 0.001 * (System.currentTimeMillis() - startTimeMillis)
 
     init {
@@ -51,7 +50,6 @@ class HelioLaserApplication: Application(), AnkoLogger {
     companion object {
         var helioLaserApplicationInstance: HelioLaserApplication? = null
             private set
-
     }
 
     override fun attachBaseContext(base: Context) {
@@ -70,19 +68,17 @@ inline fun AnkoLogger.reportGlobalEvent() {
             val bundle = Bundle()
             bundle.putString("threadName", Thread.currentThread().name)
             bundle.putString("eventClassName", stack.className)
-            info{"reportGlobalEvent ${stack.methodName} ${stack.className} on ${Thread.currentThread().name}"}
-
-        } catch (e:Exception) {
+            info { "reportGlobalEvent ${stack.methodName} ${stack.className} on ${Thread.currentThread().name}" }
+        } catch (e: Exception) {
             info("reportGlobalEvent scheduling exception for Firebase failed", e)
         }
     }
 }
 
-
 inline fun AnkoLogger.tryOrContinue(lambda: () -> Unit) {
     try {
         lambda()
-    } catch (e:Exception) {
+    } catch (e: Exception) {
         warn("tryOrContinue failed on ${Throwable().stackTrace[1]}", e)
 
         logException(e)
@@ -92,11 +88,10 @@ inline fun AnkoLogger.tryOrContinue(lambda: () -> Unit) {
 val activeExceptionReports = AtomicInteger(0)
 val totalExceptionReports = AtomicLong(0)
 
-fun AnkoLogger.logException(e:Throwable) {
+fun AnkoLogger.logException(e: Throwable) {
     warn("HelioLaserApplication exception after ${HelioLaserApplication.helioLaserApplicationInstance?.applicationAgeSeconds}s", e)
 }
 
 fun requireMainThread() {
-    require(Looper.getMainLooper().thread == Thread.currentThread())
-    { "need to be on the main Android UI thread; instead on ${Thread.currentThread()}"}
+    require(Looper.getMainLooper().thread == Thread.currentThread()) { "need to be on the main Android UI thread; instead on ${Thread.currentThread()}" }
 }

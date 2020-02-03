@@ -1,16 +1,16 @@
 package xyz.helioz.heliolaser
 
 import android.graphics.SurfaceTexture
-import android.opengl.*
+import android.opengl.GLES20
+import android.opengl.GLException
+import android.opengl.GLSurfaceView
+import android.opengl.GLUtils
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
-import org.jetbrains.anko.AnkoLogger
-import org.jetbrains.anko.info
-import org.jetbrains.anko.warn
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.*
+import java.util.HashSet
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -18,8 +18,11 @@ import javax.microedition.khronos.egl.EGL10
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.egl.EGLContext
 import javax.microedition.khronos.opengles.GL10
+import org.jetbrains.anko.AnkoLogger
+import org.jetbrains.anko.info
+import org.jetbrains.anko.warn
 
-fun AnkoLogger.clearGLError(errorMessage:String="error"): Int {
+fun AnkoLogger.clearGLError(errorMessage: String = "error"): Int {
     var glErrorCode = GLES20.glGetError()
     var lastErrorCode = GLES20.GL_NO_ERROR
     while (glErrorCode != GLES20.GL_NO_ERROR) {
@@ -33,11 +36,11 @@ fun AnkoLogger.clearGLError(errorMessage:String="error"): Int {
 fun AnkoLogger.throwOnGLError() {
     val errorCode = clearGLError()
     if (errorCode != GLES20.GL_NO_ERROR) {
-        throw GLException(errorCode, "GL error ${GLUtils.getEGLErrorString(errorCode)}")
+        throw GLException(errorCode, "throwOnGLError ${GLUtils.getEGLErrorString(errorCode)}")
     }
 }
 
-inline fun<T> AnkoLogger.checkedGL(lambda: () -> T): T {
+inline fun <T> AnkoLogger.checkedGL(lambda: () -> T): T {
     clearGLError()
     val ret = lambda()
 
@@ -45,12 +48,13 @@ inline fun<T> AnkoLogger.checkedGL(lambda: () -> T): T {
     return ret
 }
 
-class HelioGLRenderer(val helioCameraGLVisualisation: HelioCameraGLVisualisation): GLSurfaceView.Renderer, AnkoLogger {
+class HelioGLRenderer(val helioCameraGLVisualisation: HelioCameraGLVisualisation) : GLSurfaceView.Renderer, AnkoLogger {
     var surfaceHeight = 0
     var surfaceWidth = 0
     var drawFrameStartSystemNanos = 0L
     val drawingFramesPerSecond = AtomicReference<Double>()
-    val surfacesTexturesToUpdateBeforeDrawing = Collections.synchronizedSet(HashSet<SurfaceTexture>())!!
+    val surfacesTexturesToUpdateBeforeDrawingLock = object {}
+    val surfacesTexturesToUpdateBeforeDrawing = HashSet<SurfaceTexture>()
     val surfaceAttached = AtomicBoolean(false)
     private val glHelperThreadHandler by lazy {
         val helperThread = HandlerThread(javaClass.canonicalName)
@@ -68,12 +72,13 @@ class HelioGLRenderer(val helioCameraGLVisualisation: HelioCameraGLVisualisation
         }
     }
 
-
     private fun drawFrame() {
         val surfaceTextures = HashSet<SurfaceTexture>()
-        surfaceTextures.addAll(surfacesTexturesToUpdateBeforeDrawing)
+        synchronized(surfacesTexturesToUpdateBeforeDrawingLock) {
+            surfaceTextures.addAll(surfacesTexturesToUpdateBeforeDrawing)
+            surfacesTexturesToUpdateBeforeDrawing.clear()
+        }
         for (texture in surfaceTextures) {
-            surfacesTexturesToUpdateBeforeDrawing.remove(texture)
             tryOrContinue {
                 texture.updateTexImage()
             }
@@ -92,11 +97,12 @@ class HelioGLRenderer(val helioCameraGLVisualisation: HelioCameraGLVisualisation
             drawFrame()
             GLES20.glFinish()
         }
+        Thread.sleep(1) // allow other work on the CPUs
     }
 
     override fun onSurfaceChanged(gl: GL10?, w: Int, h: Int) {
         reportGlobalEvent()
-        info { "OpenGL onSurfaceChanged ${w}x$h"}
+        info { "OpenGL onSurfaceChanged ${w}x$h" }
         tryOrContinue {
             checkedGL {
                 GLES20.glViewport(0, 0, w, h)
@@ -135,7 +141,9 @@ class HelioGLRenderer(val helioCameraGLVisualisation: HelioCameraGLVisualisation
             setupEGLHelperThread(config)
         }
 
-        helioCameraGLVisualisation.prepareVisualisationShaders(this)
+        tryOrContinue {
+            helioCameraGLVisualisation.prepareVisualisationShaders(this)
+        }
 
         surfaceAttached.set(true)
     }
@@ -152,45 +160,48 @@ class HelioGLRenderer(val helioCameraGLVisualisation: HelioCameraGLVisualisation
         textureHandles.addAll(array.asList())
     }
 
-    fun reportEGLError():Int {
+    fun reportEGLError(): Int {
         val egl = EGLContext.getEGL() as EGL10
         val error = egl.eglGetError()
         if (error != EGL10.EGL_SUCCESS) {
-            warn { "OpenGL EGL error: $error "}
+            warn { "OpenGL EGL error: $error " }
             reportEGLError()
         }
         return error
     }
+
     fun checkEGLError() {
         val error = reportEGLError()
         if (error != EGL10.EGL_SUCCESS) {
             throw RuntimeException("OpenGL EGL error: $error")
         }
     }
+
     private fun setupEGLHelperThread(config: EGLConfig) {
         val egl = EGLContext.getEGL() as EGL10
         val eglDisplay = egl.eglGetCurrentDisplay()
         checkEGLError()
         val eglContext = egl.eglGetCurrentContext()
         checkEGLError()
-        val freshEglContext =  egl.eglCreateContext(eglDisplay, config, eglContext, intArrayOf(0x3098 /* EGL_CONTEXT_CLIENT_VERSION */, 2, EGL10.EGL_NONE))
+        val freshEglContext = egl.eglCreateContext(eglDisplay, config, eglContext, intArrayOf(0x3098 /* EGL_CONTEXT_CLIENT_VERSION */, 3, EGL10.EGL_NONE))
         checkEGLError()
 
-        glHelperThreadHandler.post { tryOrContinue {
-            // as some phones don't support pbuffers; we must create the surface on this thread as it grabs the
-            // looper
-            val surfaceTexture = SurfaceTexture(textureHandles.take())
+        glHelperThreadHandler.post {
             tryOrContinue {
-                surfaceTexture.setDefaultBufferSize(1, 1)
+                // as some phones don't support pbuffers; we must create the surface on this thread as it grabs the
+                // looper
+                val surfaceTexture = SurfaceTexture(textureHandles.take())
+                tryOrContinue {
+                    surfaceTexture.setDefaultBufferSize(1, 1)
+                }
+                val eglSurface = egl.eglCreateWindowSurface(eglDisplay, config, surfaceTexture, null)
+                checkEGLError()
+                val binding = egl.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, freshEglContext)
+                checkEGLError()
+                if (!binding) {
+                    throw RuntimeException("OpenGL background thread could not set context")
+                }
             }
-            val eglSurface = egl.eglCreateWindowSurface(eglDisplay, config, surfaceTexture, null)
-            checkEGLError()
-            val binding = egl.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, freshEglContext)
-            checkEGLError()
-            if (!binding) {
-                throw RuntimeException("OpenGL background thread could not set context")
-            }
-        }
         }
     }
 
@@ -200,12 +211,13 @@ class HelioGLRenderer(val helioCameraGLVisualisation: HelioCameraGLVisualisation
 
     private val textureHandles: ArrayBlockingQueue<Int> = ArrayBlockingQueue(8)
 
-    fun allocateGLTexture():Int {
+    fun allocateGLTexture(): Int {
         return textureHandles.take()
     }
 
     fun returnGLTexture(openGLTexture: Int) {
-        backgroundGLAction { // need to do this on a GL thread
+        backgroundGLAction {
+            // need to do this on a GL thread
             checkedGL {
                 val intBuffer = ByteBuffer.allocateDirect(Integer.BYTES).order(ByteOrder.nativeOrder()).asIntBuffer().put(openGLTexture)
                 intBuffer.position(0)
@@ -216,7 +228,7 @@ class HelioGLRenderer(val helioCameraGLVisualisation: HelioCameraGLVisualisation
         }
     }
 
-    fun backgroundGLAction(action:()->Unit) {
+    fun backgroundGLAction(action: () -> Unit) {
         glHelperThreadHandler.post {
             tryOrContinue {
                 action()
@@ -248,4 +260,3 @@ class HelioGLRenderer(val helioCameraGLVisualisation: HelioCameraGLVisualisation
         surfaceView.setRenderer(this)
     }
 }
-

@@ -3,19 +3,22 @@ package xyz.helioz.heliolaser
 import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
+import java.net.URL
+import java.util.concurrent.atomic.AtomicLong
 import org.jetbrains.anko.AnkoLogger
 import org.jetbrains.anko.info
 import org.jetbrains.anko.wifiManager
-import java.net.*
-import java.util.concurrent.atomic.AtomicLong
-
 
 class Audiomixclient : AnkoLogger {
     companion object {
-        val audiomixclient : Audiomixclient by lazy {
+        val audiomixclient: Audiomixclient by lazy {
             Audiomixclient()
         }
     }
+
     private val serverSendingThreadHandler by lazy {
         val helperThread = HandlerThread(javaClass.canonicalName)
         helperThread.start()
@@ -36,10 +39,10 @@ class Audiomixclient : AnkoLogger {
 
     private fun sendUdpAudioMixServerMessage(uri: Uri) {
         val msg = buildRequest(uri, nextToken())
-        info { "Audiomixclient starting sending $uri to $broadcastAddress"}
+        info { "Audiomixclient starting sending $uri to $broadcastAddress" }
         serverSendingThreadHandler.post {
             tryOrContinue {
-                info { "Audiomixclient sending $uri to $broadcastAddress (${msg.size} bytes)"}
+                info { "Audiomixclient sending $uri to $broadcastAddress (${msg.size} bytes)" }
                 datagramSocket.send(DatagramPacket(msg, msg.size, broadcastAddress, SEND_UDP_PORT))
             }
         }
@@ -47,12 +50,14 @@ class Audiomixclient : AnkoLogger {
 
     private fun sendAllAudioMixServerMessage(uri: Uri) {
         sendUdpAudioMixServerMessage(uri)
-        val httpUri = uri.buildUpon().authority(HelioPref("audiomixserver_http_address", DEFAULT_HTTP_ADDRESS)).build()
+        val httpUri = uri.buildUpon().authority(HelioPref("audiomixserver_uri_authority", DEFAULT_HTTP_ADDRESS))
+                .scheme(HelioPref("audionmixserver_uri_scheme", "http"))
+                .build()
         serverSendingThreadHandler.post {
             tryOrContinue {
-                info { "audiomixclient requesting $httpUri"}
+                info { "audiomixclient requesting $httpUri" }
                 val results = URL(httpUri.toString()).content
-                info { "audiomixclient received $results for $httpUri"}
+                info { "audiomixclient received $results for $httpUri" }
             }
         }
     }

@@ -1,52 +1,62 @@
 package xyz.helioz.heliolaser
 
+import java.util.HashMap
+import kotlin.math.PI
+import kotlin.math.absoluteValue
+import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.round
+import kotlin.math.sign
+import kotlin.math.sqrt
 import org.jetbrains.anko.AnkoLogger
+import org.jetbrains.anko.info
 import org.jetbrains.anko.warn
-import java.util.*
-import kotlin.math.*
+import org.jtransforms.fft.FloatFFT_1D
 
 object HelioMorseCodec : AnkoLogger {
     val characterToMorse = {
         val hash = HashMap<Char, String>()
         val alphabet = arrayOf(
-                ".-",   //A
-                "-...", //B
-                "-.-.", //C
-                "-..",  //D
-                ".",    //E
-                "..-.", //F
-                "--.",  //G
-                "....", //H
-                "..",   //I
-                ".---", //J
-                "-.-",  //K
-                ".-..", //L
-                "--",   //M
-                "-.",   //N
-                "---",  //O
-                ".--.", //P
-                "--.-", //Q
-                ".-.",  //R
-                "...",  //S
-                "-",    //T
-                "..-",  //U
-                "...-", //V
-                ".--",  //W
-                "-..-", //X
-                "-.--", //Y
-                "--.." //Z
+                ".-", // A
+                "-...", // B
+                "-.-.", // C
+                "-..", // D
+                ".", // E
+                "..-.", // F
+                "--.", // G
+                "....", // H
+                "..", // I
+                ".---", // J
+                "-.-", // K
+                ".-..", // L
+                "--", // M
+                "-.", // N
+                "---", // O
+                ".--.", // P
+                "--.-", // Q
+                ".-.", // R
+                "...", // S
+                "-", // T
+                "..-", // U
+                "...-", // V
+                ".--", // W
+                "-..-", // X
+                "-.--", // Y
+                "--.." // Z
         )
         val digits = arrayOf(
-                "-----", //0
-                ".----", //1
-                "..---", //2
-                "...--", //3
-                "....-", //4
-                ".....", //5
-                "-....", //6
-                "--...", //7
-                "---..", //8
-                "----." //9
+                "-----", // 0
+                ".----", // 1
+                "..---", // 2
+                "...--", // 3
+                "....-", // 4
+                ".....", // 5
+                "-....", // 6
+                "--...", // 7
+                "---..", // 8
+                "----." // 9
         )
 
         for (c in 'A'..'Z') {
@@ -71,20 +81,22 @@ object HelioMorseCodec : AnkoLogger {
                 '+' to ".-.-.",
                 '!' to "---.",
                 '(' to "-.--.",
-                ')' to "-.--.-"
+                ')' to "-.--.-",
+                '&' to ".-...",
+                '$' to "...-..-"
         )
         hash
     }()
 
     val morseToCharacter = {
         val hash = HashMap<String, Char>()
-        for ((char,morse) in characterToMorse) {
+        for ((char, morse) in characterToMorse) {
             hash[morse] = char
         }
         hash
     }()
 
-    fun convertTextToMorse(text:String):String {
+    fun convertTextToMorse(text: String): String {
         with(StringBuilder()) {
             var first = true
             for (letter in text) {
@@ -108,32 +120,37 @@ object HelioMorseCodec : AnkoLogger {
     }
 
     data class HelioMorseTimings(
-        val ditSeconds:Double = 0.03,
-        val dahSeconds:Double = ditSeconds*3.0,
-        val symbolSpaceSeconds:Double = ditSeconds,
-        val letterSpaceSeconds:Double = dahSeconds,
-        val ditDahThresholdSeconds:Double = (ditSeconds+dahSeconds)/2,
-        val symbolLetterSpaceThresholdSeconds: Double = (symbolSpaceSeconds+letterSpaceSeconds)/2
-        )  {
-        val wordSpaceThresholdSeconds:Double
+        val ditSeconds: Double = 0.03,
+        val dahSeconds: Double = ditSeconds * 3.0,
+        val symbolSpaceSeconds: Double = ditSeconds,
+        val letterSpaceSeconds: Double = dahSeconds,
+        val ditDahThresholdSeconds: Double = (ditSeconds + dahSeconds) / 2,
+        val symbolLetterSpaceThresholdSeconds: Double = (symbolSpaceSeconds + letterSpaceSeconds) / 2
+    ) {
+        val wordSpaceThresholdSeconds: Double
             get() = letterSpaceSeconds + symbolLetterSpaceThresholdSeconds
     }
 
-    private class MorseDurationsBuffer : ArrayList<Double>() {
-        fun addSignedDuration(signedSeconds:Double) {
+    private class MorseDurationsBuffer(val shortestPossibleSignalSeconds: Double = 0.005) : ArrayList<Double>() {
+        fun addSignedDuration(signedSeconds: Double) {
             if (signedSeconds == 0.0) return
             if (isNotEmpty() && signedSeconds.sign == last().sign) {
-                this[size-1] = last() + signedSeconds
+                this[size - 1] = last() + signedSeconds
             } else {
-                add(signedSeconds)
+                // drop all tiny spikes in either direction
+                if (isNotEmpty() && this[size - 1].absoluteValue < shortestPossibleSignalSeconds) {
+                    this[size - 1] = signedSeconds
+                } else {
+                    add(signedSeconds)
+                }
             }
         }
     }
 
     fun convertMorseToSignedDurations(
-            morse:String,
-            timings: HelioMorseTimings
-            ):DoubleArray {
+        morse: String,
+        timings: HelioMorseTimings
+    ): DoubleArray {
         with(MorseDurationsBuffer()) {
             for (symbol in morse) {
                 when (symbol) {
@@ -151,15 +168,14 @@ object HelioMorseCodec : AnkoLogger {
                     else -> {
                         throw IllegalArgumentException("unknown morse code symbol: $symbol")
                     }
-
                 }
             }
             return toDoubleArray()
         }
     }
 
-    fun convertSignedDurationsToMorse(signedSeconds: DoubleArray, helioMorseTimings: HelioMorseTimings):String {
-        with (StringBuilder()) {
+    fun convertSignedDurationsToMorse(signedSeconds: DoubleArray, helioMorseTimings: HelioMorseTimings): String {
+        with(StringBuilder()) {
             for (signedSecond in signedSeconds) {
                 if (signedSecond < 0) {
                     if (signedSecond.absoluteValue > helioMorseTimings.symbolLetterSpaceThresholdSeconds) {
@@ -178,8 +194,32 @@ object HelioMorseCodec : AnkoLogger {
         }
     }
 
-    fun convertMorseToText(morse: String):String {
-        with (StringBuilder()) {
+    fun scoreDecodedText(decodedText: String): Double {
+        val seenLetters = HashSet<Char>()
+        var score = 0.0
+        var wordLength = 0
+        for (char in decodedText) {
+            if (char.isWhitespace()) {
+                if (wordLength > 2 && wordLength < 10) {
+                    score += 1
+                }
+                wordLength = 0
+                continue
+            }
+            if (seenLetters.add(char)) {
+                if (char == '\uFFFD') {
+                    score -= 1
+                } else {
+                    wordLength += 1
+                    score += 1
+                }
+            }
+        }
+        return score
+    }
+
+    fun convertMorseToText(morse: String): String {
+        with(StringBuilder()) {
             var firstWord = true
             for (word in morse.split("  ")) {
                 if (firstWord) {
@@ -194,40 +234,11 @@ object HelioMorseCodec : AnkoLogger {
                     append(morseToCharacter[letter] ?: '\uFFFD')
                 }
             }
-            return toString()
+            return toString().trim()
         }
     }
 
-    fun guessMorseTimings(signedSeconds: DoubleArray, shortestPossibleSignalSeconds:Double = 0.005):HelioMorseTimings {
-        fun separatePeaks(samples:ArrayList<Double>): Pair<Double, Double> {
-            if (samples.size < 9) {
-                throw IllegalArgumentException("unable to guess timing as too few samples; ${signedSeconds.size} originally, now ${samples.size} with $shortestPossibleSignalSeconds second smoothing")
-            }
-            samples.sort()
-            val roughMedian = samples[samples.size/2]
-
-            // as dah is customarily 3*dit, the median is hopefully inside (dit, 3 * dit)
-            // therefore, dit is hopefully (roughMedian/3, roughMedian)
-            // and dah is hopefully within (roughMedian, roughMedian*3)
-
-            val ditStartIndex = samples.binarySearch(roughMedian/3 - shortestPossibleSignalSeconds).absoluteValue
-            val ditEndIndex = samples.binarySearch(roughMedian + shortestPossibleSignalSeconds).absoluteValue
-            val dahStartIndex = samples.binarySearch(roughMedian - shortestPossibleSignalSeconds).absoluteValue
-            val dahEndIndex = samples.binarySearch(roughMedian*3 + shortestPossibleSignalSeconds).absoluteValue
-
-            if (ditStartIndex + 1 >= ditEndIndex) {
-                throw IllegalArgumentException("too few short samples; estimating separation at $roughMedian seconds")
-            }
-            if (dahStartIndex + 1 >= dahEndIndex) {
-                throw IllegalArgumentException("too few long samples (${ditStartIndex-ditEndIndex+1} short samples); estimating separation at $roughMedian seconds")
-            }
-
-            val ditEstimate = samples[(ditStartIndex+ditEndIndex)/2]
-            val dahEstimate = samples[(dahStartIndex+dahEndIndex)/2]
-
-            return Pair(ditEstimate, dahEstimate)
-        }
-
+    fun guessMorseTimings(signedSeconds: DoubleArray): HelioMorseTimings {
         val onSeconds = ArrayList<Double>()
         val offSeconds = ArrayList<Double>()
 
@@ -239,65 +250,206 @@ object HelioMorseCodec : AnkoLogger {
             }
         }
 
-        val (dit, dah) = separatePeaks(onSeconds)
-        val (symbolSpace, _) = separatePeaks(offSeconds)
-
-        return HelioMorseTimings(ditSeconds = dit,
-                dahSeconds = max(dah, dit*3),
-                symbolSpaceSeconds = min(symbolSpace, dit))
-    }
-
-    class LoudnessFilter(sampleRateHertz: Double, lookbackSeconds: Double) {
-        val amplitudesSquared = FloatArray(((lookbackSeconds + 1.0/sampleRateHertz)*sampleRateHertz).toInt())
-        var currentAmplitudeIndex = 0L
-        var totalLoudnessSquared = 0.0
-        var loudnessEstimate = 0.0
-        var meanLoadness = 0.0
-        var maxLoudness = 0.0
-
-        val filterThresholdEstimate:Double
-            get() = max((meanLoadness+maxLoudness)/2, maxLoudness-meanLoadness)
-
-        fun addAmplitude(amp:Float) {
-            require(!amp.isNaN()) { "attempting to add a NaN to LoudnessFilter after $currentAmplitudeIndex samples" }
-            val index = (currentAmplitudeIndex % amplitudesSquared.size).toInt()
-            if (currentAmplitudeIndex >= amplitudesSquared.size) {
-                totalLoudnessSquared -= amplitudesSquared[index]
-            }
-            val squared = amp*amp
-            amplitudesSquared[index] = squared
-            totalLoudnessSquared += squared
-            currentAmplitudeIndex ++
-
-            loudnessEstimate = sqrt(totalLoudnessSquared / min(amplitudesSquared.size.toLong(), currentAmplitudeIndex))
-            meanLoadness += (loudnessEstimate - meanLoadness) / currentAmplitudeIndex
-            maxLoudness = max(loudnessEstimate, maxLoudness)
+        fun separatePeaks(durations: ArrayList<Double>, longQuantile: Double = .5): Pair<Double, Double> {
+            val mean = durations.sum() / durations.size
+            durations.sort()
+            val durationsMeanIndex = durations.binarySearch(mean).absoluteValue
+            return Pair(durations[(durationsMeanIndex * .75).toInt()], durations[durationsMeanIndex + ((durations.size - 1 - durationsMeanIndex) * longQuantile).toInt()])
         }
 
+        val (dit, dah) = separatePeaks(onSeconds, longQuantile = .5) // about half dots and half dashes
+        val (symbolSpace, letterSpace) = separatePeaks(offSeconds, longQuantile = .8) // about .8 letterspaces
+
+        return HelioMorseTimings(ditSeconds = (dit + dah / 3) / 2,
+                dahSeconds = (dah + 3 * dit) / 2,
+                symbolSpaceSeconds = (symbolSpace + letterSpace / 3) / 2,
+                letterSpaceSeconds = (symbolSpace * 3 + letterSpace) / 2)
     }
 
-    class GoertzelFilter(frequencyToDetectAsProportionOfSampling:Double, outputFunction:(Double)->Unit) {
-        val goertzelCoefficient = 2 * cos(2 * Math.PI * frequencyToDetectAsProportionOfSampling)
+    fun signedDurationsFromAmplitudes(amplitude: FloatArray, sampleRateHertz: Double, shortestPossibleSignalSeconds: Double = 0.005): DoubleArray {
+        val filterLevel = amplitude.sum() / amplitude.size
 
-    }
-
-    fun signedDurationsFromAmplitudes(amplitude:FloatArray, sampleRateHertz:Double, lookbackSeconds:Double = max(16.0/sampleRateHertz, 0.003)):DoubleArray {
-        val loudness = FloatArray(amplitude.size)
-        val filter = LoudnessFilter(sampleRateHertz, lookbackSeconds)
-        for (i in 0 until amplitude.size) {
-            filter.addAmplitude(amplitude[i])
-            val estimate = filter.loudnessEstimate
-            loudness[i] = estimate.toFloat()
-        }
-        with (MorseDurationsBuffer()) {
-            for (level in loudness) {
-                if (level > filter.filterThresholdEstimate) {
-                    addSignedDuration(1/sampleRateHertz)
+        val lookbackSamples = (shortestPossibleSignalSeconds * sampleRateHertz).toInt() + 1
+        var lastLowSample = -lookbackSamples - 1
+        with(MorseDurationsBuffer()) {
+            for (i in amplitude.indices) {
+                val a = amplitude[i]
+                if (a < filterLevel) {
+                    lastLowSample = i
+                }
+                if (i - lastLowSample > lookbackSamples) {
+                    addSignedDuration(1 / sampleRateHertz)
                 } else {
-                    addSignedDuration(-1/sampleRateHertz)
+                    addSignedDuration(-1 / sampleRateHertz)
                 }
             }
             return toDoubleArray()
         }
+    }
+}
+
+class AudioSamplesMorseDecoder(
+    val samplesPerSecond: Double,
+    val minFrequencyHz: Double = 20.0,
+    val maxFrequencyHz: Double = 2000.0
+) : AnkoLogger {
+    val samplesPerTransform = ceil(maxOf(samplesPerSecond * 3 * (1.0 / minFrequencyHz), sqrt(2.0 * maxFrequencyHz * samplesPerSecond))).toInt()
+    val secondsPerTransform = samplesPerTransform / (samplesPerSecond * 1.0)
+    val fft = FloatFFT_1D(samplesPerTransform.toLong())
+    val accumulatedFFTArray = FloatArray(samplesPerTransform * 2)
+    val fftBuffer = FloatArray(samplesPerTransform * 2)
+
+    fun decodeMorseFromAudio(samples: FloatArray, samplesSize: Int = samples.size): String {
+        addSamplesForFFT(samples, samplesSize)
+        val toneEstimate = toneEstimateFromFFT()
+        info { "decodeMorseFromAudio toneEstimate $toneEstimate" }
+        val filter = GoertzelFilter(targetFrequencyHz = toneEstimate.frequencyHz.toDouble(), samplingHz = samplesPerSecond.toDouble())
+
+        val samplingPointSeparation = max(1, ((filter.samplingHz + filter.targetFrequencyHz / 2) / filter.targetFrequencyHz).toInt())
+        val sampleWindow = round((2.0 * filter.samplingHz) / filter.targetFrequencyHz).toInt()
+        val transformedFloatArray = FloatArray((samplesSize - sampleWindow) / samplingPointSeparation)
+        for (i in transformedFloatArray.indices) {
+            for (j in (i * samplingPointSeparation)..(i * samplingPointSeparation + sampleWindow)) {
+                filter.processNextSample(samples[j].toDouble())
+            }
+            transformedFloatArray[i] = filter.magnitude().toFloat()
+            filter.resetFilter()
+        }
+        val durations = HelioMorseCodec.signedDurationsFromAmplitudes(transformedFloatArray, samplesPerSecond.toDouble() / samplingPointSeparation)
+        val guessTimings = HelioMorseCodec.guessMorseTimings(durations)
+
+        var bestMessage: String = ""
+        var bestScore = Double.NEGATIVE_INFINITY
+        for (ditDahScale in 1..4) {
+            val ditDahRatio = ditDahScale / 2.0
+            for (spaceScale in 1..4) {
+                val spaceRatio = spaceScale / 2.0
+                val timings = HelioMorseCodec.HelioMorseTimings(
+                        ditSeconds = guessTimings.ditSeconds * ditDahRatio,
+                        dahSeconds = guessTimings.dahSeconds * ditDahRatio,
+                        letterSpaceSeconds = guessTimings.letterSpaceSeconds * spaceRatio,
+                        symbolSpaceSeconds = guessTimings.symbolSpaceSeconds * spaceRatio
+                )
+                val symbols = HelioMorseCodec.convertSignedDurationsToMorse(durations, timings)
+                val message = HelioMorseCodec.convertMorseToText(symbols)
+                val score = HelioMorseCodec.scoreDecodedText(message)
+                if (score > bestScore) {
+                    info { "decodeMorseFromAudio improvedDecode space=$spaceRatio ditDah=$ditDahRatio message=$message" }
+                    bestScore = score
+                    bestMessage = message
+                }
+            }
+        }
+
+        if (bestScore > 0) {
+            return bestMessage
+        }
+        return ""
+    }
+
+    fun addSamplesForFFT(samples: FloatArray, samplesSize: Int) {
+        var inputOffset = 0
+        while (inputOffset + samplesPerTransform < samplesSize) {
+            var i = 0
+
+            while (i < samplesPerTransform) {
+                fftBuffer[i] = samples[inputOffset]
+                i += 1
+                inputOffset += 1
+            }
+
+            fft.realForward(fftBuffer)
+            for (i in accumulatedFFTArray.indices) {
+                accumulatedFFTArray[i] += fftBuffer[i]
+            }
+        }
+    }
+
+    fun toneEstimateFromFFT(): ToneEstimate {
+        var highestIndex = -1
+        var nextToHighestIndex = -1
+        var nextAmplitude = Float.NEGATIVE_INFINITY
+
+        val minBucketIndex = floor(minFrequencyHz / secondsPerTransform).toInt()
+        val maxBucketIndex = ceil(maxFrequencyHz / secondsPerTransform).toInt()
+        var peakAmpltiude = Float.NEGATIVE_INFINITY
+
+        val amplitudes = FloatArray(maxBucketIndex + 1)
+
+        fun Re(i: Int): Float = accumulatedFFTArray[2 * i]
+        fun Im(i: Int): Float = accumulatedFFTArray[2 * i + 1]
+
+        for (i in minBucketIndex..maxBucketIndex) {
+            amplitudes[i] = sqrt(Re(i) * Re(i) + Im(i) * Im(i))
+        }
+
+        for (i in minBucketIndex..maxBucketIndex) {
+            peakAmpltiude = maxOf(peakAmpltiude, amplitudes[i])
+        }
+
+        for (i in minBucketIndex..maxBucketIndex) {
+            val bucketAmplitude = amplitudes[i]
+            if (bucketAmplitude >= peakAmpltiude) {
+                var neighbourAmplitude = Float.NEGATIVE_INFINITY
+                var j = -1
+                if (i >= 1) {
+                    neighbourAmplitude = amplitudes[i - 1]
+                    j = i - 1
+                }
+                if (i < amplitudes.lastIndex && amplitudes[(i + 1)] > neighbourAmplitude) {
+                    neighbourAmplitude = amplitudes[i + 1]
+                    j = i + 1
+                }
+                if (neighbourAmplitude > nextAmplitude) {
+                    highestIndex = i
+                    nextToHighestIndex = j
+                    nextAmplitude = neighbourAmplitude
+                }
+            }
+        }
+        fun frequencyEstimate(index: Int): Float {
+            return (index / secondsPerTransform).toFloat()
+        }
+
+        val frequencyGuess = (frequencyEstimate(highestIndex) * peakAmpltiude + frequencyEstimate(nextToHighestIndex) * nextAmplitude) / (peakAmpltiude + nextAmplitude)
+        return ToneEstimate(frequencyHz = frequencyGuess, amplitude = peakAmpltiude)
+    }
+}
+
+data class ToneEstimate(
+    val frequencyHz: Float,
+    val amplitude: Float
+)
+
+data class GoertzelFilter(
+    val targetFrequencyHz: Double,
+    val samplingHz: Double
+) {
+    // The Goertzel Algorithm
+    // Kevin Banks, August 28, 2002
+    // https://www.embedded.com/design/configurable-systems/4024443/The-Goertzel-Algorithm
+    // unlike the presentation there does not discretize omega to make it exact for N samples
+    val omega = (2 * PI * targetFrequencyHz) / samplingHz
+    val decay = 2 * cos(omega)
+    var Q1 = 0.0
+    var Q2 = 0.0
+    var sampleCount = 0L
+
+    fun resetFilter() {
+        Q1 = 0.0
+        Q2 = 0.0
+        sampleCount = 0
+    }
+
+    fun processNextSample(sample: Double) {
+        val Q0 = decay * Q1 - Q2 + sample
+        Q2 = Q1
+        Q1 = Q0
+        sampleCount += 1
+    }
+
+    fun magnitude(): Double {
+        // the magnitude asymptotically approaches 2*signal magnitude*sampleCount for a stationary wave
+        return 2 * sqrt(Q1 * Q1 + Q2 * Q2 - Q1 * Q2 * decay) / sampleCount
     }
 }

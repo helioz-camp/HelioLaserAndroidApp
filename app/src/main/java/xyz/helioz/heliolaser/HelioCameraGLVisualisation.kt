@@ -1,45 +1,88 @@
 package xyz.helioz.heliolaser
 
 import android.graphics.SurfaceTexture
-import android.hardware.Camera
-import android.hardware.Camera.Parameters.FLASH_MODE_OFF
-import android.hardware.Camera.Parameters.FLASH_MODE_TORCH
+import android.media.MediaRecorder
 import android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES
-import android.opengl.GLES20.*
+import android.opengl.GLES20
+import android.opengl.GLES20.GL_CLAMP_TO_EDGE
+import android.opengl.GLES20.GL_COLOR_BUFFER_BIT
+import android.opengl.GLES20.GL_DEPTH_BUFFER_BIT
+import android.opengl.GLES20.GL_FRAGMENT_SHADER
+import android.opengl.GLES20.GL_LINEAR
+import android.opengl.GLES20.GL_TEXTURE0
+import android.opengl.GLES20.GL_TEXTURE_MAG_FILTER
+import android.opengl.GLES20.GL_TEXTURE_MIN_FILTER
+import android.opengl.GLES20.GL_TEXTURE_WRAP_S
+import android.opengl.GLES20.GL_TEXTURE_WRAP_T
+import android.opengl.GLES20.GL_TRIANGLES
+import android.opengl.GLES20.GL_VERTEX_SHADER
+import android.opengl.GLES20.glActiveTexture
+import android.opengl.GLES20.glBindTexture
+import android.opengl.GLES20.glClear
+import android.opengl.GLES20.glClearColor
+import android.opengl.GLES20.glTexParameteri
 import android.view.MotionEvent
-import org.jetbrains.anko.AnkoLogger
-import org.jetbrains.anko.doAsync
-import org.jetbrains.anko.info
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicLong
+import org.jetbrains.anko.AnkoLogger
+import org.jetbrains.anko.info
 
 class HelioCameraGLVisualisation : AnkoLogger {
-    var simpleSquareBufferIndex : Int = -1
-    var openGLTexture : Int = -1
+    var fullScreenBufferIndex: Int = -1
+    var openGLTexture: Int = -1
     val visualisationProgram by lazy {
         HelioGLProgram()
     }
-    var cameraTexture:SurfaceTexture? = null
-    var previewSize:Camera.Size? = null
-    var camera:Camera? = null
+    val cameraDownsampledProgram by lazy {
+        HelioGLProgram()
+    }
+    var cameraTexture: SurfaceTexture? = null
+    var mediaRecorder: MediaRecorder? = null
     val sampleDimensionPixels = 4
     val sampleBuffer = ByteBuffer.allocateDirect(sampleDimensionPixels * sampleDimensionPixels * 4).order(ByteOrder.nativeOrder())!!
-    val loudnessFilter = HelioMorseCodec.LoudnessFilter(
-            HelioPref("loudness_filter_estimated_hz", 60.0),
-            HelioPref("loudness_filter_seconds_lookback", 10.0))
     val background = FloatArray(3)
 
     fun prepareVisualisationShaders(helioGLRenderer: HelioGLRenderer) {
-        visualisationProgram.openGLCompileAndAttachShader(GL_VERTEX_SHADER,
-"""
+        info { "GL_VERSION ${GLES20.glGetString(GLES20.GL_VERSION)}" }
+
+        cameraDownsampledProgram.openGLCompileAndAttachShader(GL_VERTEX_SHADER, """
+    precision mediump float;
+    
+    attribute vec2 position;
+    uniform vec2 resolution;
+    uniform float proportionDownsampleSquare;
+
+    void main() {
+       float ratio = resolution.x/resolution.y;
+    
+       gl_Position = vec4(position.x*proportionDownsampleSquare -1. + proportionDownsampleSquare, position.y*proportionDownsampleSquare*ratio + 1. - proportionDownsampleSquare*ratio, 0.0, 1.0);
+    }
+    """)
+        cameraDownsampledProgram.openGLCompileAndAttachShader(GL_FRAGMENT_SHADER, """
+#extension GL_OES_EGL_image_external : require
 precision mediump float;
 
-attribute vec2 position;
+uniform samplerExternalOES textureSamplerForFragmentShader;
+            
 void main() {
-   gl_Position = vec4(position, 0.0, 1.0);
+  vec4 c = texture2D(textureSamplerForFragmentShader, vec2(0.5,0.5));
+  float brightness = 0.2126*c.r + 0.7152*c.g + 0.0722*c.b;
+  gl_FragColor = vec4(brightness, brightness, brightness, brightness); 
 }
-""")
+            
+        """)
+        cameraDownsampledProgram.openGLLinkAllShaders()
+
+        visualisationProgram.openGLCompileAndAttachShader(GL_VERTEX_SHADER,
+                """
+            precision mediump float;
+            
+            attribute vec2 position;
+            void main() {
+               gl_Position = vec4(position, 0.0, 1.0);
+            }
+            """)
         visualisationProgram.openGLCompileAndAttachShader(GL_FRAGMENT_SHADER,
                 """
 #extension GL_OES_EGL_image_external : require
@@ -50,7 +93,6 @@ uniform vec2 resolution;
 uniform vec3 background;
 uniform float wobble;
 uniform samplerExternalOES textureSamplerForFragmentShader;
-varying mediump vec2 textureCoordinateForFragmentShader;
 
 vec3 hsv2rgb(vec3 c) {
     vec3 p = abs(fract(c.xxx + vec3(1.,2./3.,1./3.)) * 6.0 - vec3(3));
@@ -88,51 +130,29 @@ void main() {
 }
 """)
         visualisationProgram.openGLLinkAllShaders()
-        simpleSquareBufferIndex = visualisationProgram.openGLTransferFloatsToGPUHandle(floatArrayOf(
-                -1f,-1f,
-                -1f,+1f,
-                +1f,+1f,
-                +1f,+1f,
-                +1f,-1f,
-                -1f,-1f
-                ))
+        fullScreenBufferIndex = visualisationProgram.openGLTransferFloatsToGPUHandle(floatArrayOf(
+                -1f, -1f,
+                -1f, +1f,
+                +1f, +1f,
+                +1f, +1f,
+                +1f, -1f,
+                -1f, -1f
+        ))
         openGLTexture = helioGLRenderer.allocateGLTexture()
-
-        Thread({
-            var bestCamera = -1
-            var info:Camera.CameraInfo? = null
-            tryOrContinue {
-                info = Camera.CameraInfo()
-                for (camId in 0 until Camera.getNumberOfCameras()) {
-                    bestCamera = camId
-                    Camera.getCameraInfo(camId, info)
-
-                    if (info?.facing == Camera.CameraInfo.CAMERA_FACING_BACK) {
-                        break
-                    }
-                }
-            }
-            if (bestCamera < 0 || info == null) {
-                info("no cameras")
-            } else {
-                tryOrContinue {
-                    val cam = Camera.open(bestCamera)
-                    info("opened camera $cam with $info params ${cam.parameters.flatten()}")
-                    helioGLRenderer.backgroundGLAction {
-                        prepareCameraTexture(helioGLRenderer, cam, info!!)
-                    }
-                }
-            }
-        }, "camera open thread").start()
 
         background.fill(1f)
     }
 
     fun releaseVisualisationResources() {
         tryOrContinue {
-            camera?.release()
+            mediaRecorder?.stop()
+            mediaRecorder?.release()
+            mediaRecorder = null
         }
-        camera = null
+        tryOrContinue {
+            HelioCameraSource.cameraInterface?.disposeCamera()
+            HelioCameraSource.cameraInterface = null
+        }
         tryOrContinue {
             visualisationProgram.openGLDeleteProgram()
         }
@@ -140,7 +160,6 @@ void main() {
             cameraTexture?.release()
         }
         cameraTexture = null
-
     }
 
     fun renderVisualisationFrame(helioGLRenderer: HelioGLRenderer) {
@@ -151,9 +170,11 @@ void main() {
         checkedGL {
             visualisationProgram.openGLAttachProgram()
             visualisationProgram.openGLSetUniformFloat("wobble", floatArrayOf(
-                    ((System.currentTimeMillis()*0.001) % (2.0* Math.PI)).toFloat()))
+                    ((System.currentTimeMillis() * 0.001) % (2.0 * Math.PI)).toFloat()))
+            val pixels = HelioCameraSource.cameraInterface?.previewTextureSize()
             visualisationProgram.openGLSetUniformFloat("previewSize",
-                    floatArrayOf(previewSize?.width?.toFloat() ?: 0f, previewSize?.height?.toFloat() ?: 0f))
+                    floatArrayOf(pixels?.first?.toFloat() ?: 0f, pixels?.second?.toFloat()
+                            ?: 0f))
             visualisationProgram.openGLSetUniformFloat("resolution",
                     floatArrayOf(helioGLRenderer.surfaceWidth.toFloat(), helioGLRenderer.surfaceHeight.toFloat()))
             visualisationProgram.openGLSetUniformInt("textureSamplerForFragmentShader", 0)
@@ -164,76 +185,143 @@ void main() {
             glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
             glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
             glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        }
 
+        checkedGL {
             visualisationProgram.openGLShadeVerticesFromBuffer(
                     "position",
-                    simpleSquareBufferIndex,
+                    fullScreenBufferIndex,
                     GL_TRIANGLES,
                     2,
                     6
             )
+        }
+// this never works; GL error 0x502        checkedGL { glGenerateMipmap(GL_TEXTURE_2D) }
 
+        checkedGL {
+            cameraDownsampledProgram.openGLAttachProgram()
+            cameraDownsampledProgram.openGLSetUniformFloat("proportionDownsampleSquare", floatArrayOf(0.1f))
+            cameraDownsampledProgram.openGLSetUniformFloat("resolution",
+                    floatArrayOf(helioGLRenderer.surfaceWidth.toFloat(), helioGLRenderer.surfaceHeight.toFloat()))
+
+            cameraDownsampledProgram.openGLShadeVerticesFromBuffer(
+                    "position",
+                    fullScreenBufferIndex,
+                    GL_TRIANGLES,
+                    2,
+                    6
+            )
+        }
+
+        checkedGL {
             glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0)
         }
     }
 
     fun flipVisualisationCamera(motionEvent: MotionEvent) {
-            tryOrContinue {
-                val params = camera?.parameters
-                params?.autoExposureLock = true
-                camera?.parameters = params
-            }
-            tryOrContinue {
-                val params = camera?.parameters
-                params?.autoWhiteBalanceLock = true
-                camera?.parameters = params
-            }
-
+        tryOrContinue {
+            HelioCameraSource.cameraInterface?.lockFocusAllSettings()
+        }
     }
 
-    fun prepareCameraTexture(helioGLRenderer: HelioGLRenderer, camera: Camera, info: Camera.CameraInfo) {
+    fun prepareCameraTexture(helioGLRenderer: HelioGLRenderer) {
         checkedGL {
             glActiveTexture(GL_TEXTURE0)
             glBindTexture(GL_TEXTURE_EXTERNAL_OES, openGLTexture)
         }
         val cameraFrameCount = AtomicLong()
-        cameraTexture = SurfaceTexture(openGLTexture)
-        cameraTexture?.setOnFrameAvailableListener { surfaceTexture ->
+        val texture = SurfaceTexture(openGLTexture)
+        texture.setOnFrameAvailableListener { surfaceTexture ->
             if (cameraFrameCount.getAndIncrement() == 0L) {
-                info { "camera $this first onFrameAvailable params ${camera.parameters.flatten()}"}
+                info { "camera $this first onFrameAvailable" }
             }
-            helioGLRenderer.surfacesTexturesToUpdateBeforeDrawing.add(surfaceTexture)
+            synchronized(helioGLRenderer.surfacesTexturesToUpdateBeforeDrawingLock) {
+                helioGLRenderer.surfacesTexturesToUpdateBeforeDrawing.add(surfaceTexture)
+            }
         }
-        camera.setPreviewTexture(cameraTexture)
-        previewSize = camera.parameters.previewSize
-        tryOrContinue {
-            camera.autoFocus { success, camera -> info { "camera $this autofocus $success" } }
-        }
-        info { "camera preview requested for $this" }
-        camera.startPreview()
-        this.camera = camera
+        cameraTexture = texture
+        HelioCameraSource.prepareCameraAsync(texture)
     }
 
+    fun stopRecording() {
+        tryOrContinue {
+            requireMainThread()
+            mediaRecorder?.stop()
+            mediaRecorder?.release()
+            mediaRecorder = null
+        }
+    }
+
+    /*
+    fun startRecording() {
+        requireMainThread()
+        val recorder = MediaRecorder()
+        recorder.setOnErrorListener({ mr, what, extra ->
+            info { "MediaRecorder OnErrorListener $what $extra" }
+        })
+        recorder.setOnInfoListener { mr, what, extra ->
+            info { "MediaRecorder OnInfoListener $what $extra" }
+        }
+        tryOrContinue {
+            camera?.lock()
+            camera?.unlock()
+        }
+        recorder.setCamera(camera)
+        mediaRecorder = recorder
+        doAsync {
+            tryOrContinue {
+                continueMediaRecorderSetup(recorder)
+            }
+        }
+    }
+
+    fun continueMediaRecorderSetup(recorder: MediaRecorder) {
+        recorder.setVideoSource(MediaRecorder.VideoSource.CAMERA)
+        tryOrContinue {
+            recorder.setProfile(camcorderProfile)
+        }
+        tryOrContinue {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && camcorderProfile?.videoCodec == MediaRecorder.VideoEncoder.H264) {
+                recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_2_TS)
+            }
+        }
+        val cameraSize = previewSize!!
+        val frameRate = max(floor(cameraFps).toInt(),camcorderProfile?.videoFrameRate ?: 0)
+        tryOrContinue {
+            recorder.setVideoSize(cameraSize.width, cameraSize.height)
+        }
+        tryOrContinue {
+            recorder.setVideoFrameRate(frameRate)
+        }
+        tryOrContinue {
+            recorder.setVideoEncodingBitRate(
+                    max(camcorderProfile?.videoBitRate?.toDouble() ?: 0.0, cameraSize.width*cameraSize.height*frameRate* HelioPref("camera_video_bitrate_bits_per_pixel_minimum", 0.4)).toInt()
+            )
+        }
+        val outputFileName: String = (HelioLaserApplication.helioLaserApplicationInstance?.getExternalFilesDir(Environment.DIRECTORY_DCIM).toString()
+                ?: "") + "/morseRecording-${System.currentTimeMillis() / 1000}.vid"
+        recorder.setOutputFile(outputFileName)
+        recorder.prepare()
+        recorder.start()
+        info { "HelioCameraGLVisualisation-recording $outputFileName at framerate $frameRate with camera fps $cameraFps" }
+    }
+*/
 
     fun morseSignalOn() {
         background.fill(0f)
 
-        camera?.let {
-            val params = it.parameters
-            params.flashMode = FLASH_MODE_TORCH
-            it.parameters = params
+        stopRecording()
+
+        tryOrContinue {
+            HelioCameraSource.cameraInterface?.flashlight(on = true)
         }
     }
 
     fun morseSignalOff() {
         background.fill(1f)
 
-        camera?.let {
-            val params = it.parameters
-            params.flashMode = FLASH_MODE_OFF
-            it.parameters = params
+        tryOrContinue {
+            HelioCameraSource.cameraInterface?.flashlight(on = false)
         }
     }
-
-
 }

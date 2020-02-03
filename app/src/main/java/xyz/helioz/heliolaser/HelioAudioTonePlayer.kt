@@ -3,18 +3,19 @@ package xyz.helioz.heliolaser
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
-import org.jetbrains.anko.doAsync
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.sin
+import org.jetbrains.anko.doAsync
 
-class HelioAudioTonePlayer(toneHertz:Double=780.0) : AutoCloseable {
+class HelioAudioTonePlayer(toneHertz: Double = 780.0) : AutoCloseable {
     override fun close() {
         doAsync {
             audioTrack.release()
         }
     }
-    var samplesInTone:Int = 0
+
+    var samplesInTone: Int = 0
 
     val audioTrack by lazy {
         val audioStreamType = AudioManager.STREAM_DTMF
@@ -22,9 +23,9 @@ class HelioAudioTonePlayer(toneHertz:Double=780.0) : AutoCloseable {
         val channelConfig = AudioFormat.CHANNEL_OUT_MONO
         val audioFormat = AudioFormat.ENCODING_PCM_16BIT
         // cannot use floats as they were added in API 21
-        val buffer = ShortArray((nativeOutputSampleRate/toneHertz).toInt())
+        val buffer = ShortArray((nativeOutputSampleRate / toneHertz).toInt())
         for (i in buffer.indices) {
-            val time = i/nativeOutputSampleRate.toDouble()
+            val time = i / nativeOutputSampleRate.toDouble()
             buffer[i] = (Short.MAX_VALUE.toFloat() * sin(time * toneHertz * 2.0 * Math.PI).toFloat()).toShort()
         }
 
@@ -33,7 +34,7 @@ class HelioAudioTonePlayer(toneHertz:Double=780.0) : AutoCloseable {
                 nativeOutputSampleRate,
                 channelConfig,
                 audioFormat,
-                max(AudioTrack.getMinBufferSize(audioStreamType, channelConfig, audioFormat), buffer.size*4),
+                max(AudioTrack.getMinBufferSize(audioStreamType, channelConfig, audioFormat), buffer.size * 4),
                 AudioTrack.MODE_STATIC
         )
 
@@ -43,14 +44,14 @@ class HelioAudioTonePlayer(toneHertz:Double=780.0) : AutoCloseable {
         track
     }
 
-    fun startPlayingTone(durationSeconds:Double) {
+    fun startPlayingTone(durationSeconds: Double) {
         doAsync {
             if (audioTrack.playState == AudioTrack.PLAYSTATE_PLAYING) {
                 audioTrack.pause()
                 audioTrack.reloadStaticData()
             }
             audioTrack.setLoopPoints(0, samplesInTone,
-                    floor(durationSeconds/samplesInTone*audioTrack.sampleRate).toInt())
+                    floor(durationSeconds / samplesInTone * audioTrack.sampleRate).toInt())
 
             audioTrack.play()
         }

@@ -1,11 +1,11 @@
 package xyz.helioz.heliolaser
 
 import android.opengl.GLES20
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import org.jetbrains.anko.AnkoLogger
 import org.jetbrains.anko.info
 import org.jetbrains.anko.warn
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 class HelioGLProgram : AnkoLogger {
     fun openGLSetUniformInt(uniformName: String, value: Int) {
@@ -24,7 +24,6 @@ class HelioGLProgram : AnkoLogger {
         }
         openGLSetUniformFloat(uniformName, value)
     }
-
 
     fun openGLSetUniformFloat(uniformName: String, value: FloatArray) {
         val location = uniformNameToGLLocation.getValue(uniformName)
@@ -78,7 +77,7 @@ class HelioGLProgram : AnkoLogger {
             }
 
             safelyDone = true
-            info { "OpenGL openGLTransferFloatsToGPUHandle ${floatVertexArray.toList()} to handle ${buffArray[0]} with size $bytesNeeded bytes"  }
+            info { "OpenGL openGLTransferFloatsToGPUHandle ${floatVertexArray.toList()} to handle ${buffArray[0]} with size $bytesNeeded bytes" }
 
             return buffArray[0]
         } finally {
@@ -90,7 +89,7 @@ class HelioGLProgram : AnkoLogger {
         }
     }
 
-    fun openGLShadeVerticesFromBuffer(attributeName: String, bufferIndex: Int, drawArraysMode:Int, coordsPerVertex: Int, vertexCount: Int) {
+    fun openGLShadeVerticesFromBuffer(attributeName: String, bufferIndex: Int, drawArraysMode: Int, coordsPerVertex: Int, vertexCount: Int) {
         val attribLocation = attributeNameToGLLocation.getValue(attributeName)
         if (attribLocation < 0) {
             warn { "OpenGL openGLShadeVerticesFromBuffer cannot use GL attribute $attributeName which was compiled out" }
@@ -202,11 +201,11 @@ class HelioGLProgram : AnkoLogger {
             GLES20.glAttachShader(glProgram, shader)
         }
         for (match in uniformMatchRegex.findAll(shaderCode)) {
-            val (uniformType,name) = match.destructured
+            val (uniformType, name) = match.destructured
             uniformNameToGLLocation[name] = -1
         }
         for (match in attributeMatchRegex.findAll(shaderCode)) {
-            val (attributeType,name) = match.destructured
+            val (attributeType, name) = match.destructured
             attributeNameToGLLocation[name] = -1
         }
 
@@ -235,11 +234,10 @@ class HelioGLProgram : AnkoLogger {
             val location = GLES20.glGetUniformLocation(glProgram, name)
             clearGLError()
             if (location == -1) {
-                warn { "OpenGL openGLLinkAllShaders uniform $name was compiled out of the program"}
+                warn { "OpenGL openGLLinkAllShaders uniform $name was compiled out of the program" }
             } else {
                 uniformNameToGLLocation[name] = location
             }
-
         }
         for (name in attributeNameToGLLocation.keys) {
             val location = GLES20.glGetAttribLocation(glProgram, name)
