@@ -40,7 +40,7 @@ class HelioCameraGLVisualisation : AnkoLogger {
     var cameraTexture: SurfaceTexture? = null
     var mediaRecorder: MediaRecorder? = null
     val sampleDimensionPixels = 4
-    val sampleBuffer = ByteBuffer.allocateDirect(sampleDimensionPixels * sampleDimensionPixels * 4).order(ByteOrder.nativeOrder())!!
+    val sampleBuffer = ByteBuffer.allocateDirect(sampleDimensionPixels * sampleDimensionPixels * 4).order(ByteOrder.nativeOrder())
     val background = FloatArray(3)
 
     fun prepareVisualisationShaders(helioGLRenderer: HelioGLRenderer) {
@@ -141,6 +141,8 @@ void main() {
         openGLTexture = helioGLRenderer.allocateGLTexture()
 
         background.fill(1f)
+
+        prepareCameraTexture(helioGLRenderer)
     }
 
     fun releaseVisualisationResources() {
@@ -218,7 +220,7 @@ void main() {
         }
     }
 
-    fun flipVisualisationCamera(motionEvent: MotionEvent) {
+    fun lockAllSettingsOnCamera(@Suppress("UNUSED_PARAMETER") motionEvent: MotionEvent) {
         tryOrContinue {
             HelioCameraSource.cameraInterface?.lockFocusAllSettings()
         }

@@ -359,8 +359,8 @@ class AudioSamplesMorseDecoder(
             }
 
             fft.realForward(fftBuffer)
-            for (i in accumulatedFFTArray.indices) {
-                accumulatedFFTArray[i] += fftBuffer[i]
+            for (j in accumulatedFFTArray.indices) {
+                accumulatedFFTArray[j] += fftBuffer[j]
             }
         }
     }

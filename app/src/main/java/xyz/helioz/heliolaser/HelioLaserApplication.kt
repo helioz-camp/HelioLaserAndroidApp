@@ -42,7 +42,7 @@ class HelioLaserApplication : Application(), AnkoLogger {
         super.onTerminate()
     }
 
-    override fun onConfigurationChanged(newConfig: Configuration?) {
+    override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         reportGlobalEvent()
     }

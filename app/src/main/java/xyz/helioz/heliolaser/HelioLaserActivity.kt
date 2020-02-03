@@ -188,7 +188,7 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
             override fun onTouchEvent(motionEvent: MotionEvent): Boolean {
                 info { "GLSurfaceView onTouchEvent $motionEvent" }
                 return if (motionEvent.action == MotionEvent.ACTION_BUTTON_RELEASE) {
-                    helioCameraGLVisualisation.flipVisualisationCamera(motionEvent)
+                    helioCameraGLVisualisation.lockAllSettingsOnCamera(motionEvent)
                     performClick()
                     true
                 } else {
@@ -216,7 +216,7 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
                 == PackageManager.PERMISSION_DENIED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), makePermissionsCallback({ permissions, grants -> info { "camera permission $grants" } }))
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), makePermissionsCallback({ _, grants -> info { "camera permission $grants" } }))
             // can continue without camera permission
         }
         val surfaceView = makeCameraSurfaceView()
