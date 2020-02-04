@@ -32,7 +32,7 @@ import org.jetbrains.anko.warn
 
 @RequiresApi(Build.VERSION_CODES.M)
 @TargetApi(Build.VERSION_CODES.M)
-class HelioCamera2Setup() : AnkoLogger {
+class HelioCamera2Setup : AnkoLogger {
     companion object {
         data class HelioCamera2Config(
             val camera2Id: String,
@@ -281,7 +281,7 @@ class HelioCamera2Setup() : AnkoLogger {
                         surfaces.remove(mediaRecorder.surface)
                     }
                     tryOrContinue {
-                       captureRequestBuilder.apply {
+                        captureRequestBuilder.apply {
                             set(CaptureRequest.FLASH_MODE, if (on) CameraMetadata.FLASH_MODE_TORCH else CameraMetadata.FLASH_MODE_OFF)
                         }
                         makeRepeatingRequests()

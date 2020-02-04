@@ -12,13 +12,13 @@ class HelioSurfaceBrightnessEstimator(val surfaceWidth: Int, val surfaceHeight: 
     }
     val brightnessAllocation by lazy {
         // Element.YUV is only supported after API 19
-            val rgbTypeBuilder: Type.Builder = Type.Builder(rs, Element.RGB_888(rs)).apply {
-                setX(surfaceWidth)
-                setY(surfaceHeight)
-            }
-            Allocation.createTyped(rs, rgbTypeBuilder.create(),
-                    Allocation.USAGE_IO_INPUT or Allocation.USAGE_SCRIPT)
+        val rgbTypeBuilder: Type.Builder = Type.Builder(rs, Element.RGB_888(rs)).apply {
+            setX(surfaceWidth)
+            setY(surfaceHeight)
         }
+        Allocation.createTyped(rs, rgbTypeBuilder.create(),
+                Allocation.USAGE_IO_INPUT or Allocation.USAGE_SCRIPT)
+    }
     val script by lazy {
         ScriptC_HelioSurfaceBrightnessEstimatorRenderScript(rs)
     }

@@ -228,7 +228,7 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
         helioGLRenderer?.setupSurfaceViewForGL(surfaceView)
 
         val updateRecordingUI = { audioRecord: AudioRecord, msg: String? ->
-            runOnUiThread() {
+            runOnUiThread {
                 tryOrContinue {
                     recordingView.setImageResource(if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) R.drawable.ic_mic_none_black_120dp else R.drawable.ic_mic_off_black_120dp)
                 }
@@ -274,11 +274,11 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
                     return super.onKeyPreIme(keyCode, keyEvent)
                 }
             }
-            verticalLayout() {
+            verticalLayout {
                 layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
                 gravity = Gravity.CENTER
 
-                linearLayout() {
+                linearLayout {
                     imageButton(R.drawable.ic_present_to_all_black_120dp) {
                         onClick {
                             beam(editorWidget.text.toString())
