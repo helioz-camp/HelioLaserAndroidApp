@@ -129,13 +129,17 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
         maybeSendOneLetter()
     }
 
+    private fun updateSendingBox() {
+        messageSendingBox.text = sendingMessage.replace('.', '·')
+    }
+
     private fun maybeSendOneLetter() {
         if (activelySendingNow) {
             return
         }
         helioCameraGLVisualisation.morseSignalOff()
         audioTonePlayer.stopPlayingTone()
-        messageSendingBox.text = sendingMessage
+        updateSendingBox()
 
         if (sendingMessage.isEmpty()) {
             return
@@ -143,7 +147,7 @@ class HelioLaserActivity : AppCompatActivity(), AnkoLogger {
 
         val firstLetter = sendingMessage.first()
         sendingMessage = sendingMessage.removeRange(0, 1)
-        messageSendingBox.text = sendingMessage
+        updateSendingBox()
         activelySendingNow = true
 
         val signedTimings = LinkedList(HelioMorseCodec.convertMorseToSignedDurations(firstLetter.toString(), morseTimings).toList())

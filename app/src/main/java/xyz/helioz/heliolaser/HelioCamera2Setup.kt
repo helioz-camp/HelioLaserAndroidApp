@@ -11,9 +11,11 @@ import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
+import android.media.CamcorderProfile
 import android.media.MediaCodec
 import android.media.MediaRecorder
 import android.os.Build
+import android.os.Environment
 import android.util.Range
 import android.util.Size
 import android.view.Surface
@@ -169,22 +171,26 @@ class HelioCamera2Setup() : AnkoLogger {
                 }
             }, HelioCameraSource.cameraHandler)
         }
-        try {
-            device.createConstrainedHighSpeedCaptureSession(
-                    targets, object : CameraCaptureSession.StateCallback() {
-
-                override fun onConfigured(session: CameraCaptureSession) {
-                    cont.resume(session)
-                }
-
-                override fun onConfigureFailed(session: CameraCaptureSession) {
-                    warn { "HelioCamera2Setup.createConstrainedHighSpeedCaptureSession onConfigureFailed" }
-                    tryRegularSession()
-                }
-            }, HelioCameraSource.cameraHandler)
-        } catch (e: Exception) {
-            warn("HelioCamera2Setup.createConstrainedHighSpeedCaptureSession failed", e)
+        if (targets.size < 2) {
             tryRegularSession()
+        } else {
+            try {
+                device.createConstrainedHighSpeedCaptureSession(
+                        targets, object : CameraCaptureSession.StateCallback() {
+
+                    override fun onConfigured(session: CameraCaptureSession) {
+                        cont.resume(session)
+                    }
+
+                    override fun onConfigureFailed(session: CameraCaptureSession) {
+                        warn { "HelioCamera2Setup.createConstrainedHighSpeedCaptureSession onConfigureFailed" }
+                        tryRegularSession()
+                    }
+                }, HelioCameraSource.cameraHandler)
+            } catch (e: Exception) {
+                warn("HelioCamera2Setup.createConstrainedHighSpeedCaptureSession failed", e)
+                tryRegularSession()
+            }
         }
     }
 
@@ -197,8 +203,34 @@ class HelioCamera2Setup() : AnkoLogger {
     suspend fun cameraStart(previewTexture: SurfaceTexture): HelioCameraInterface {
         val previewSurface = Surface(previewTexture)
         previewTexture.setDefaultBufferSize(camera2Config!!.cameraCapturePixels.width, camera2Config!!.cameraCapturePixels.height)
+        val surfaces = ArrayList<Surface>().apply {
+            add(previewSurface)
+        }
+        val mediaRecorder = MediaRecorder()
 
-        val surfaces = listOf(previewSurface)
+        tryOrContinue {
+            mediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE)
+            val config = camera2Config!!
+            tryOrContinue {
+                val camcorderProfile = CamcorderProfile.get(config.camera2Id.toInt(), CamcorderProfile.QUALITY_HIGH_SPEED_HIGH)
+                mediaRecorder.setProfile(camcorderProfile)
+            }
+            mediaRecorder.apply {
+                setVideoFrameRate(config.fpsEstimate.toInt())
+                setVideoSize(config.cameraCapturePixels.width, config.cameraCapturePixels.height)
+                setVideoEncodingBitRate(
+                        (config.cameraCapturePixels.width * config.cameraCapturePixels.height * config.fpsEstimate * HelioPref("camera_video_bitrate_bits_per_pixel_minimum", 0.4)).toInt()
+                )
+            }
+            val outputFileName: String = (HelioLaserApplication.helioLaserApplicationInstance?.getExternalFilesDir(Environment.DIRECTORY_DCIM)?.toString()
+                    ?: "") + "/morseRecording-${System.currentTimeMillis() / 1000}.vid"
+            mediaRecorder.setOutputFile(outputFileName)
+            info { "HelioCamera2Setup recording to $outputFileName" }
+            mediaRecorder.prepare()
+            mediaRecorder.start()
+            surfaces.add(mediaRecorder.surface)
+        }
+
         val setup = HelioCamera2Setup()
         val camera = setup.openCameraDevice()
         val session = setup.createCaptureSession(camera, surfaces)
@@ -208,6 +240,9 @@ class HelioCamera2Setup() : AnkoLogger {
         }
 
         fun makeRepeatingRequests() {
+            tryOrContinue {
+                session.stopRepeating() // TODO use onReadyCallback here
+            }
             val captureRequest = captureRequestBuilder.build()
             val requestList = if (session is CameraConstrainedHighSpeedCaptureSession) {
                 session.createHighSpeedRequestList(captureRequest)
@@ -231,7 +266,6 @@ class HelioCamera2Setup() : AnkoLogger {
             }
 
             override fun lockFocusAllSettings() {
-                session.stopRepeating()
                 captureRequestBuilder.apply {
                     set(CaptureRequest.CONTROL_AE_LOCK, true)
                     set(CaptureRequest.BLACK_LEVEL_LOCK, true)
@@ -241,7 +275,30 @@ class HelioCamera2Setup() : AnkoLogger {
             }
 
             override fun flashlight(on: Boolean) {
-                cameraManager.setTorchMode(camera2Config!!.camera2Id, on)
+                HelioCameraSource.cameraHandler.post {
+                    tryOrContinue {
+                        captureRequestBuilder.removeTarget(mediaRecorder.surface)
+                        surfaces.remove(mediaRecorder.surface)
+                    }
+                    tryOrContinue {
+                       captureRequestBuilder.apply {
+                            set(CaptureRequest.FLASH_MODE, if (on) CameraMetadata.FLASH_MODE_TORCH else CameraMetadata.FLASH_MODE_OFF)
+                        }
+                        makeRepeatingRequests()
+                    }
+                    tryOrContinue {
+                        mediaRecorder.stop()
+                    }
+                    tryOrContinue {
+                        session.close()
+                    }
+                    tryOrContinue {
+                        camera.close()
+                    }
+                    tryOrContinue {
+                        cameraManager.setTorchMode(camera2Config!!.camera2Id, on)
+                    }
+                }
             }
 
             override fun previewTextureSize(): Pair<Int, Int> {

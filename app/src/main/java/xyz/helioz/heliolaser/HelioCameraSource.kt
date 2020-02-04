@@ -6,13 +6,13 @@ import android.media.CamcorderProfile
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import kotlin.coroutines.CoroutineContext
+import kotlin.math.max
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.android.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import org.jetbrains.anko.AnkoLogger
 import org.jetbrains.anko.info
-import kotlin.coroutines.CoroutineContext
-import kotlin.math.max
 
 abstract class HelioCameraInterface {
     abstract fun disposeCamera(): Unit

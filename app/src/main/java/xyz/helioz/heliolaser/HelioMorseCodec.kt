@@ -120,7 +120,7 @@ object HelioMorseCodec : AnkoLogger {
     }
 
     data class HelioMorseTimings(
-        val ditSeconds: Double = 0.03,
+        val ditSeconds: Double = 0.1,
         val dahSeconds: Double = ditSeconds * 3.0,
         val symbolSpaceSeconds: Double = ditSeconds,
         val letterSpaceSeconds: Double = dahSeconds,

@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="xyz.helioz.heliolaser">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -20,6 +21,11 @@
     <uses-feature
         android:glEsVersion="0x00030000"
         android:required="true" />
+
+    <!-- use a compatible library with a minSdk of at most 14,
+		or increase this project's minSdk version to at least 16,
+		or use tools:overrideLibrary="com.google.android.exoplayer2" to force usage (may lead to runtime failures) -->
+    <uses-sdk tools:overrideLibrary="com.google.android.exoplayer2, com.google.android.exoplayer2.ui, com.google.android.exoplayer2.source.dash, com.google.android.exoplayer2.source.hls, com.google.android.exoplayer2.source.smoothstreaming, com.google.android.exoplayer2.core" />
 
     <application
         android:name="xyz.helioz.heliolaser.HelioLaserApplication"
